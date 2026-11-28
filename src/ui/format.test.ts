@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { compactNumber, count, displayText, formatNumber, formatTemporal, groupsLabel, matchLabel, num, recordsLabel, rowsLabel, relativeTime, resetFormats } from './format';
+import { compactNumber, count, displayText, formatNumber, formatTemporal, groupsLabel, num, rowCountLabel, rowsLabel, relativeTime, resetFormats } from './format';
 
 test.each([[0, '0'], [999, '999'], [1200, '1.2K'], [12400, '12.4K'], [3_400_000, '3.4M'], [2_000_000_000, '2B']])('%d → %s', (n, s) => {
   expect(compactNumber(n)).toBe(s);
@@ -17,12 +17,13 @@ test('count pluralises', () => {
   expect(count(3, 'data mart')).toBe('3 data marts');
 });
 
-describe('recordsLabel', () => {
-  test('says records, and record for one', () => {
-    expect(recordsLabel('1')).toBe('1 record');
-    expect(recordsLabel('200+')).toBe('200+ records');
-    expect(recordsLabel('0')).toBe('0 records');
-    expect(recordsLabel('11.1K')).toBe('11.1K records');
+describe('rowCountLabel', () => {
+  test('says rows, and row for one', () => {
+    expect(rowCountLabel('1')).toBe('1 row');
+    expect(rowCountLabel('2')).toBe('2 rows');
+    expect(rowCountLabel('200+')).toBe('200+ rows');
+    expect(rowCountLabel('0')).toBe('0 rows');
+    expect(rowCountLabel('11.1K')).toBe('11.1K rows');
   });
 });
 
@@ -36,10 +37,10 @@ describe('rowsLabel', () => {
     expect(rowsLabel(57, false, 57)).toBe('57');
     expect(rowsLabel(57, false, null)).toBe('57');
   });
-  test('reads as records and as groups', () => {
-    expect(recordsLabel(rowsLabel(200, true, 12345))).toBe(`${num(200)} of ${num(12345)} records`);
+  test('reads as rows and as groups', () => {
+    expect(rowCountLabel(rowsLabel(200, true, 12345))).toBe(`${num(200)} of ${num(12345)} rows`);
     expect(groupsLabel(rowsLabel(200, true, 12345))).toBe(`${num(200)} of ${num(12345)} groups`);
-    expect(recordsLabel(rowsLabel(1, true, 2))).toBe('1 of 2 records');
+    expect(rowCountLabel(rowsLabel(1, true, 2))).toBe('1 of 2 rows');
     expect(groupsLabel(rowsLabel(1, true, 2))).toBe('1 of 2 groups');
   });
 });
@@ -109,26 +110,5 @@ describe('formatNumber', () => {
     expect(displayText('1223', 'NUMERIC')).toBe('1,223');
     expect(displayText(1223, 'STRING')).toBe('1223');
     expect(displayText(1223)).toBe('1223');
-  });
-});
-
-describe('matchLabel', () => {
-  test('the share is rounded down and the tooltip names both counts', () => {
-    expect(matchLabel(1480, 12300)).toEqual({ text: '12% match', tip: '1,480 of 12,300 records match the filters and slices' });
-    expect(matchLabel(99_999, 100_000)?.text).toBe('99% match');
-    expect(matchLabel(1, 2)?.text).toBe('50% match');
-  });
-  test('above 0 and below 1 percent reads "<1%", and none matching reads 0%', () => {
-    expect(matchLabel(5, 10_000)?.text).toBe('<1% match');
-    expect(matchLabel(0, 10_000)?.text).toBe('0% match');
-  });
-  test('nothing when every record matches, the total is unknown or 0, or the count is not a number', () => {
-    expect(matchLabel(100, 100)).toBeNull();
-    expect(matchLabel(101, 100)).toBeNull();
-    expect(matchLabel(5, null)).toBeNull();
-    expect(matchLabel(5, undefined)).toBeNull();
-    expect(matchLabel(0, 0)).toBeNull();
-    expect(matchLabel(undefined, 100)).toBeNull();
-    expect(matchLabel(NaN, 100)).toBeNull();
   });
 });

@@ -120,6 +120,27 @@ test('with joined sources not loaded, the canvas shows the main card alone', asy
   expect(document.querySelectorAll('article[data-ghost]')).toHaveLength(0);
 });
 
+test('a canvas card shows the filtered count passed for its own path and retries that path', async () => {
+  const mart: Mart = { id: 'orders', title: 'Orders', description: '', icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: null };
+  const model = { marts: new Map([['orders', mart]]), sources: [], edges: [], contexts: [], failedStorages: [] } as unknown as Model;
+  const filtered = new Map([['', { state: { state: 'ok', value: 56 } as const, partial: false }], ['orders', { state: { state: 'ok', value: 99 } as const, partial: false }]]);
+  const { rerender } = render(
+    <TooltipProvider>
+      <MartsCanvas model={model} mainId="orders" columns={['id']} sources={null} counts={new Map([['orders', { state: 'ok', value: 1234 }]])} filtered={filtered} dq={new Map()} own={() => undefined} onOpenApp={vi.fn()} onRetryCount={vi.fn()} onRequestCount={vi.fn()} click={vi.fn().mockResolvedValue(undefined)} />
+    </TooltipProvider>,
+  );
+  expect(screen.getByText('56 rows')).toBeInTheDocument();
+  expect(screen.queryByText('99 rows')).toBeNull();
+  const retry = vi.fn();
+  rerender(
+    <TooltipProvider>
+      <MartsCanvas model={model} mainId="orders" columns={['id']} sources={null} counts={new Map([['orders', { state: 'ok', value: 1234 }]])} filtered={new Map([['', { state: { state: 'error', message: 'nope' } as const, partial: false }]])} filteredRetry={retry} dq={new Map()} own={() => undefined} onOpenApp={vi.fn()} onRetryCount={vi.fn()} onRequestCount={vi.fn()} click={vi.fn().mockResolvedValue(undefined)} />
+    </TooltipProvider>,
+  );
+  await userEvent.click(screen.getByText('—'));
+  expect(retry).toHaveBeenCalledWith('');
+});
+
 const pointer = (clientX: number, clientY: number, buttons = 1) => ({ clientX, clientY, button: 0, buttons, pointerId: 1 });
 const centre = (id: string, path?: string) => {
   const w = el(id, path)!.parentElement!;

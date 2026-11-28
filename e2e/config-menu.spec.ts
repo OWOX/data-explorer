@@ -236,7 +236,7 @@ test('Graph view: a panel opened from the root menu keeps its row through a wind
 declare global { interface Window { __copiedLink?: string } }
 // Two header rows and the 11 orders of one customer, the email filter below.
 const ROWS = 13;
-const TIP = '108 of 450 records match the filters and slices';
+const TIP = "108 of 450 rows match this data mart's filters";
 
 test('Clear on a joined data mart keeps it with its filter, the view link carries it, and Remove from report drops it', async ({ page, context }) => {
   await expect(data(page).getByRole('row')).toHaveCount(202);
@@ -292,10 +292,10 @@ test('Clear on a joined data mart keeps it with its filter, the view link carrie
   await closeConfig(page);
 });
 
-test('a filtered card shows its share of matching records, and none without a filter', async ({ page }) => {
+test('a filtered card shows the rows its filter keeps, and the full count without one', async ({ page }) => {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   const card = marts(page).locator('article#dm-orders');
-  await expect(card.locator('[data-match]')).toHaveCount(0);
+  await expect(card.getByText('450 rows')).toBeVisible();
   const icon = data(page).getByLabel('Column menu status', { exact: true });
   await icon.locator('xpath=ancestor::th').hover();
   await icon.click();
@@ -304,9 +304,9 @@ test('a filtered card shows its share of matching records, and none without a fi
   await page.getByLabel('Value').fill('paid');
   await page.getByRole('button', { name: 'Apply' }).click();
   await expect.poll(() => data(page).getByRole('row').count()).toBe(110);
-  await expect(card.locator('[data-match]')).toHaveText('24% match');
-  await card.locator('[data-match]').hover();
+  await expect(card.getByText('108 rows')).toBeVisible();
+  await card.getByText('108 rows').hover();
   await expect(page.getByRole('tooltip')).toHaveText(TIP);
   await page.getByRole('button', { name: 'Undo' }).click();
-  await expect(card.locator('[data-match]')).toHaveCount(0);
+  await expect(card.getByText('450 rows')).toBeVisible();
 });

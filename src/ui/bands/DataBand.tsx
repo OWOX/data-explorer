@@ -3,7 +3,7 @@ import { ChartColumn, Table2, TriangleAlert } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import type { Model } from '../../model/types';
 import { useStore, type GridState } from '../../state/store';
-import { groupsLabel, recordsLabel } from '../format';
+import { groupsLabel, rowCountLabel } from '../format';
 import { Tooltip } from '../Tooltip';
 import { ConfigMenuSlot } from '../../charts/menuSlot';
 import { MartGrid, type NoKey } from '../explorer/MartGrid';
@@ -62,7 +62,7 @@ export function DataBand({ model, folded, onFold, loading = null, fullScreen, on
   const note = noKey === 'missing' ? NO_KEY_NOTE : null;
   const hint = noKey === 'hidden' ? HINT_NO_OPEN : fullScreen?.on ? HINT_FULL : HINT;
   return (
-    <Band id="band-data" icon={<Table2 size={18} />} title="Data" total={mart && rows?.id === mart.id ? (rows.grouped ? groupsLabel : recordsLabel)(rows.label) : undefined} totalStale={rows?.stale} hint={`${hint}${note ? ` ${note}` : ''}`} afterHint={<>{note && <NoKeyWarning note={note} />}{gridMart?.accessible && saved && <><ViewSwitch label="Show data as" options={DATA_VIEWS} value={saved.view === 'charts' ? 'charts' : 'table'} onChange={setView} /><span ref={setSlot} data-chart-list-slot className="inline-flex flex-wrap items-center gap-y-1" /></>}</>} folded={folded} onFold={onFold} grid={false} loading={loading} fullScreen={fullScreen}>
+    <Band id="band-data" icon={<Table2 size={18} />} title="Data" total={mart && rows?.id === mart.id ? (rows.grouped ? groupsLabel : rowCountLabel)(rows.label) : undefined} totalStale={rows?.stale} hint={`${hint}${note ? ` ${note}` : ''}`} afterHint={<>{note && <NoKeyWarning note={note} />}{gridMart?.accessible && saved && <><ViewSwitch label="Show data as" options={DATA_VIEWS} value={saved.view === 'charts' ? 'charts' : 'table'} onChange={setView} /><span ref={setSlot} data-chart-list-slot className="inline-flex flex-wrap items-center gap-y-1" /></>}</>} folded={folded} onFold={onFold} grid={false} loading={loading} fullScreen={fullScreen}>
       {!gridMart ? (
         <p className="dm-muted p-2 text-sm">Select a data mart.</p>
       ) : !gridMart.accessible ? (

@@ -28,8 +28,8 @@ export const num = (n: number): string => n.toLocaleString();
 /** "1 data mart", "3 data marts". */
 export const count = (n: number, noun: string): string => `${num(n)} ${noun}${n === 1 ? '' : 's'}`;
 
-/** "11.1K records", "1 record": the badge text for a row count already shortened by the caller. */
-export const recordsLabel = (amount: string): string => `${amount} ${amount === '1' ? 'record' : 'records'}`;
+/** "11.1K rows", "1 row": the badge text for a row count already shortened by the caller. */
+export const rowCountLabel = (amount: string): string => `${amount} ${amount === '1' ? 'row' : 'rows'}`;
 
 /** The badge amount: "200 of 12,345" when more rows exist and the total is known, else "200+" (more rows) or the plain count. */
 export const rowsLabel = (loaded: number, hasMore: boolean, total: number | null): string =>
@@ -124,13 +124,3 @@ export function formatNumber(v: unknown): string | null {
  */
 export const displayText = (v: unknown, type?: string, { group = true }: { group?: boolean } = {}): string =>
   (type ? formatTemporal(v, type) ?? (group && isNumericType(type) ? formatNumber(v) : null) : null) ?? rawText(v);
-
-/**
- * The badge of a card next to its record count when filters or slices keep only some of the records: "12% match", rounded down.
- * `matched` and `total` are counts of the same records. Nothing when all of them match, or when either count is unknown or the total is 0.
- */
-export function matchLabel(matched: number | undefined, total: number | null | undefined): { text: string; tip: string } | null {
-  if (matched === undefined || !Number.isFinite(matched) || total === null || total === undefined || !(total > 0) || matched >= total) return null;
-  const share = Math.floor((100 * matched) / total);
-  return { text: `${matched > 0 && share === 0 ? '<1' : share}% match`, tip: `${num(matched)} of ${num(total)} records match the filters and slices` };
-}

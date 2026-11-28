@@ -60,7 +60,7 @@ test('the first load selects Orders: its rows, its joined marts, the sources, ba
   await expect(martCard(page, 'Orders')).toHaveAttribute('aria-pressed', 'true');
   await expect(band(page, 'marts').getByText('Customers', { exact: true })).toBeVisible();
   await expect(band(page, 'sources').getByText('Shopify', { exact: true })).toBeVisible();
-  await expect(data.getByText('200 of 450 records')).toBeVisible();
+  await expect(data.getByText('200 of 450 rows')).toBeVisible();
   await expect(band(page, 'row').getByText('Select a row.')).toBeVisible();
   await expect(martCard(page, 'Orders').getByLabel(/^Passed/)).toBeVisible();
   await martCard(page, 'Orders').hover();
@@ -788,7 +788,7 @@ test('a Sum on Amount groups the rows by the other columns; the badge counts gro
   // a real grouped value: a sum of order amounts is a positive number
   expect(Number((await groupedSum(data)).replace(/[^\d.]/g, ''))).toBeGreaterThan(0);
   await expect(data.getByText(/\d+\+? groups?$/)).toBeVisible();
-  await expect(data.getByText(/records$/)).toHaveCount(0);
+  await expect(data.getByText(/rows$/)).toHaveCount(0);
   await data.getByRole('row').nth(2).click();
   await expect(band(page, 'row').getByText('Grouped rows have no single record.')).toBeVisible();
   // unticking everything and applying brings the rows back
@@ -796,7 +796,7 @@ test('a Sum on Amount groups the rows by the other columns; the badge counts gro
   const dlg = page.getByRole('dialog');
   await dlg.getByLabel('Sum').click();
   await dlg.getByRole('button', { name: 'Apply' }).click();
-  await expect(data.getByText(/200 of 450 records/)).toBeVisible();
+  await expect(data.getByText(/200 of 450 rows/)).toBeVisible();
 });
 
 test('folding a band does not move its header: the title sits at the same x/y folded and open', async ({ page }) => {

@@ -69,7 +69,7 @@ test('a Sum on Amount groups by the other columns: Amount · Sum, no primary key
   expect(q.sort).toEqual([{ column: 'id', direction: 'asc' }]);
   await sumLoaded();
   await waitFor(() => expect(within(data()).getByText(/\d+\+? groups?$/)).toBeInTheDocument());
-  expect(within(data()).queryByText(/records$/)).toBeNull();
+  expect(within(data()).queryByText(/rows$/)).toBeNull();
   // a grouped row is no single record, and hands nothing to the Row band
   vi.mocked(rememberRow).mockClear();
   fireEvent.click(bodyRows()[0]!);
@@ -125,7 +125,7 @@ test('the Sigma stays on while a column is aggregated; unticking all and applyin
   await userEvent.click(within(dlg).getByLabelText('Sum'));
   await userEvent.click(within(dlg).getByRole('button', { name: 'Apply' }));
   await waitFor(() => expect(headers()).toContain('Amount'));
-  expect(within(data()).getByText(/records$/)).toBeInTheDocument();
+  expect(within(data()).getByText(/rows$/)).toBeInTheDocument();
 });
 
 test('the popover has no title row, a Sheets-style Select all and Clear on its function list; Apply is off while nothing is set, on once something is ticked', async () => {
@@ -159,7 +159,7 @@ test('with an aggregation set, unticking everything keeps Apply on, and applying
   expect(apply).toBeEnabled();
   await userEvent.click(apply);
   await waitFor(() => expect(headers()).toContain('Amount'));
-  expect(within(data()).getByText(/records$/)).toBeInTheDocument();
+  expect(within(data()).getByText(/rows$/)).toBeInTheDocument();
 });
 
 test('the filter popover of an aggregated column says it filters before aggregating', async () => {
@@ -192,11 +192,11 @@ test('while the grouped rows are in flight there is no groups badge and no empty
   const t = setup({ gate: new Promise<void>((r) => { open = r; }) });
   await ready();
   await showColumn('Amount');
-  expect(within(data()).getByText(/\d+\+? records$/)).toBeInTheDocument();
+  expect(within(data()).getByText(/\d+\+? rows$/)).toBeInTheDocument();
   await aggregate('Amount', 'Sum');
   await waitFor(() => expect(t.queries.at(-1)!.o.aggregation).toBeDefined());
   expect(headers().some((h) => h.startsWith('Amount · Sum'))).toBe(true);
-  expect(within(data()).queryByText(/\d+\+? (groups?|records)$/)).toBeNull();
+  expect(within(data()).queryByText(/\d+\+? (groups?|rows)$/)).toBeNull();
   expect(sumCell()).toBe('');
   open();
   await sumLoaded();

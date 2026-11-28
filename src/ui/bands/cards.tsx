@@ -3,7 +3,7 @@ import { CirclePlus, CircleX, ExternalLink, History, LoaderCircle, Plug } from '
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { Context, DqSummary, Mart, Source } from '../../model/types';
 import { COUNT_CONCURRENCY } from '../../config';
-import { compactNumber, count as plural, matchLabel, num, recordsLabel, relativeTime } from '../format';
+import { compactNumber, count as plural, num, rowCountLabel, relativeTime } from '../format';
 import { dqCardTone, dqVisual } from '../icons';
 import { Hint, TipLines, Tooltip } from '../Tooltip';
 import { whenInView } from './inview';
@@ -96,42 +96,49 @@ export function SourceCard({
   );
 }
 
-function CountBadge({ count, countable, onRetry }: { count: CountState; countable: boolean; onRetry: () => void }) {
+const PARTIAL_NOTE = 'Filters on calculated fields are not counted.';
+
+/**
+ * The row count of a card. The unfiltered `count` is shown unless `filtered` carries a state: then the badge shows the rows the card's
+ * own rules keep, and its tooltip gives them out of the total. `partial` adds a note that some rules could not be counted.
+ */
+function CountBadge({ count, filtered, countable, onRetry, onRetryFiltered }: { count: CountState; filtered?: { state?: CountState; partial: boolean }; countable: boolean; onRetry: () => void; onRetryFiltered: () => void }) {
   // A card that is never counted (a ghost) shows no badge, or it would wait for ever.
   if (!countable) return null;
+  const own = filtered?.state;
+  const shown = own ?? count;
+  const note = filtered?.partial ? ` ${PARTIAL_NOTE}` : '';
   // The row reserves one badge's height (bands.css), so the count arriving or turning out empty does not move the bands below.
-  if (count.state === 'idle' || count.state === 'queued') {
+  if (shown.state === 'idle' || shown.state === 'queued') {
     return (
-      <Tooltip content={`Waiting to count records. Up to ${COUNT_CONCURRENCY} data marts count at a time.`}>
-        <span className="dm-badge" aria-label="Waiting to count records">—</span>
+      <Tooltip content={`Waiting to count rows. Up to ${COUNT_CONCURRENCY} data marts count at a time.`}>
+        <span className="dm-badge" aria-label="Waiting to count rows">—</span>
       </Tooltip>
     );
   }
-  if (count.state === 'loading') {
-    return <Tooltip content="Counting records…"><span className="dm-badge" aria-label="Counting records"><LoaderCircle className="dm-spin" size={12} /></span></Tooltip>;
+  if (shown.state === 'loading') {
+    return <Tooltip content="Counting rows…"><span className="dm-badge" aria-label="Counting rows"><LoaderCircle className="dm-spin" size={12} /></span></Tooltip>;
   }
-  if (count.state === 'error') {
+  if (shown.state === 'error') {
     return (
-      <Tooltip content={`${count.message.replace(/\.$/, '')}. Click to retry.`}>
+      <Tooltip content={`${shown.message.replace(/\.$/, '')}. Click to retry.`}>
         <button
           type="button"
           className="dm-badge dm-badge-button"
-          onClick={(e) => { e.stopPropagation(); onRetry(); }}
+          onClick={(e) => { e.stopPropagation(); (own ? onRetryFiltered : onRetry)(); }}
         >—</button>
       </Tooltip>
     );
   }
-  if (count.value === null) {
+  if (shown.value === null) {
     return <Tooltip content="Can't count rows: this data mart has no field that can be read."><span className="dm-badge">—</span></Tooltip>;
   }
-  return <Tooltip content={recordsLabel(num(count.value))}><span className={`dm-badge${count.stale ? ' dm-stale' : ''}`} aria-busy={count.stale || undefined}>{recordsLabel(compactNumber(count.value))}</span></Tooltip>;
-}
-
-/** "12% match" after the record count: how much of the mart the filters and slices keep. Shown only for a known count and a matched number below it. */
-function MatchBadge({ matched, stale, count }: { matched: number | undefined; /** The matched number is the previous filters'. */ stale: boolean; count: CountState }) {
-  const label = count.state === 'ok' ? matchLabel(matched, count.value) : null;
-  const dim = stale || (count.state === 'ok' && !!count.stale);
-  return label && <Tooltip content={label.tip}><span className={`dm-badge${dim ? ' dm-stale' : ''}`} aria-busy={dim || undefined} data-match>{label.text}</span></Tooltip>;
+  const tip = !own
+    ? rowCountLabel(num(shown.value))
+    : count.state === 'ok' && count.value !== null
+      ? `${num(shown.value)} of ${num(count.value)} rows match this data mart's filters`
+      : `${num(shown.value)} rows match this data mart's filters`;
+  return <Tooltip content={`${tip}${note}`}><span className={`dm-badge${shown.stale ? ' dm-stale' : ''}`} aria-busy={shown.stale || undefined}>{rowCountLabel(compactNumber(shown.value))}</span></Tooltip>;
 }
 
 /** The contexts of a mart, in the project's order. */
@@ -156,8 +163,8 @@ export function MartCard({
   path,
   title,
   focused = false,
-  matched,
-  matchedStale = false,
+  filtered,
+  filteredRetry,
   onRemove,
   join,
   onSelect,
@@ -189,11 +196,7 @@ export function MartCard({
   title?: string;
   /** The Grid view's focused card: its joinable marts are shown. */
   focused?: boolean;
-  /** How many of this mart's records the grid's filters and slices keep (at this card's path); the badge compares it with the count. */
-  matched?: number;
-  /** The matched number is the previous filters' while the new count is under way: dimmed. */
-  matchedStale?: boolean;
-  /** The count of this card's own rules, read by the page (`useFilteredCounts`); Task 5 draws it. */
+  /** The rows this card's own rules keep, read by the page (`useFilteredCounts`). `partial`: some rules are not counted. */
   filtered?: { state?: CountState; partial: boolean };
   /** Reads `filtered` again after an error. */
   filteredRetry?: () => void;
@@ -262,8 +265,7 @@ export function MartCard({
         </span>
       </div>
       <div className="dm-badges dm-badges-row">
-        {mart.accessible ? <CountBadge count={count} countable={!ghost} onRetry={onRetryCount ?? NOOP} /> : <span className="dm-badge">No access</span>}
-        {mart.accessible && !ghost && <MatchBadge matched={matched} stale={matchedStale} count={count} />}
+        {mart.accessible ? <CountBadge count={count} filtered={filtered} countable={!ghost} onRetry={onRetryCount ?? NOOP} onRetryFiltered={filteredRetry ?? NOOP} /> : <span className="dm-badge">No access</span>}
       </div>
       <div className="dm-node-foot">
         <QualityMark summary={quality} />

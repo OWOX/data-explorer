@@ -33,7 +33,7 @@ for (const mode of ['Table', 'Charts']) {
 
 // Charts mode loads no rows, so the badge is absent there (as before); only Table can assert the order.
 for (const width of [1440, 800]) {
-  test(`Table at ${width}px: the records badge sits between the Data title and its hint`, async ({ page }) => {
+  test(`Table at ${width}px: the rows badge sits between the Data title and its hint`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await expect(data(page).locator('.dm-band-count')).toBeVisible();
     const title = await data(page).locator('.dm-band-title').boundingBox();
@@ -52,7 +52,7 @@ for (const width of [641, 520, 480, 400, 320]) {
     await expect(view).toBeVisible();
     await expect(data(page).locator('.dm-band-count')).toBeVisible();
     // A long count, as a big table has.
-    await data(page).locator('.dm-band-count').evaluate((el) => { el.textContent = '200 of 1,234,567 records'; });
+    await data(page).locator('.dm-band-count').evaluate((el) => { el.textContent = '200 of 1,234,567 rows'; });
     await page.setViewportSize({ width, height: 900 });
     const right = (l: Locator) => l.evaluate((el) => el.getBoundingClientRect().right);
     const contentRight = (band: Locator) => band.locator('.dm-band-head').evaluate((el) => el.getBoundingClientRect().right - parseFloat(getComputedStyle(el).paddingRight));
@@ -76,7 +76,7 @@ for (const width of [641, 520, 480, 400, 320]) {
 for (const width of [1000, 640, 400]) {
   test(`at ${width}px a long Row title stays on one line and ends in an ellipsis`, async ({ page }) => {
     const row = page.locator('#band-row');
-    // The records count is only on the loaded page: before it the header is the loading one, which is replaced.
+    // The rows count is only on the loaded page: before it the header is the loading one, which is replaced.
     await expect(data(page).locator('.dm-band-count')).toBeVisible();
     await expect(row.locator('.dm-band-title')).toBeVisible();
     await page.setViewportSize({ width, height: 900 });

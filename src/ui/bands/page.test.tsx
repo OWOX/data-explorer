@@ -95,6 +95,9 @@ const overrideTraverse = (wrap: (real: Mock['owox']['dataMarts']['traverseData']
   owox: { ...ctx.owox, dataMarts: { ...ctx.owox.dataMarts, traverseData: wrap(ctx.owox.dataMarts.traverseData.bind(ctx.owox.dataMarts)) } },
 });
 
+/** A card's row count: one column, one row, with the total row count. The grid's own reads and a record's never ask for it. */
+const isCardCount = (o: { limit?: number; includeTotalRowCount?: boolean } | undefined) => o?.limit === 1 && o.includeTotalRowCount === true;
+
 async function spyOnTraverse() {
   const calls: { id: string; o: Parameters<Mock['owox']['dataMarts']['traverseData']>[1] }[] = [];
   await mountWith(overrideTraverse((real) => (id, o) => { calls.push({ id, o }); return real(id, o); }));
@@ -145,7 +148,7 @@ describe('the four bands', () => {
     const grid = await ordersGrid();
     expect(within(band('band-data')).getByText('Orders')).toBeInTheDocument();
     expect(within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(5);
-    expect(await within(data()).findByText(`${num(200)} of ${num(450)} records`)).toBeInTheDocument();
+    expect(await within(data()).findByText(`${num(200)} of ${num(450)} rows`)).toBeInTheDocument();
     expect(martCard('Orders')).toHaveAttribute('aria-pressed', 'true');
     expect(within(marts()).getByText('Customers')).toBeInTheDocument();
     expect(within(data()).queryByText('Select a data mart.')).toBeNull();
@@ -233,7 +236,7 @@ describe('the four bands', () => {
     expect(cell.textContent).toMatch(/^\d*$/); // the key, never a name
     expect(within(cell).queryByRole('button')).toBeNull();
     expect(cell.querySelector('.text-primary')).toBeNull();
-    expect(calls.filter((c) => c.id !== 'orders' && !(c.o as { uniqueCount?: unknown }).uniqueCount)).toEqual([]);
+    expect(calls.filter((c) => c.id !== 'orders' && !isCardCount(c.o))).toEqual([]);
   });
 
   test('Redo re-applies what Undo returned from; a new navigation empties it', async () => {
@@ -440,7 +443,7 @@ describe('the record', () => {
     await userEvent.click((await within(data()).findAllByRole('cell', { name: '1' }))[0]!);
     await within(row()).findByText('status');
     await settle();
-    expect(calls.filter((c) => c.id !== 'orders' && !(c.o as { uniqueCount?: unknown }).uniqueCount)).toEqual([]);
+    expect(calls.filter((c) => c.id !== 'orders' && !isCardCount(c.o))).toEqual([]);
   });
 
   test('the Row band labels show the alias only, with a (?) holding the description', async () => {
@@ -500,7 +503,7 @@ describe('the record', () => {
     let open!: () => void;
     const calls: number[] = [];
     await mountWith(overrideTraverse((real) => async (id, o) => {
-      if (o.limit === 1) calls.push(1);
+      if (o.limit === 1 && !isCardCount(o)) calls.push(1);
       if (o.limit === 201 && gate && o.column?.includes('net_revenue')) await gate;
       return real(id, o);
     }));
@@ -552,7 +555,7 @@ describe('the record', () => {
     await userEvent.click((await within(data()).findAllByRole('cell', { name: '1' }))[0]!);
     await within(row()).findByText('status');
     await settle();
-    const recordReads = () => calls.filter((c) => c.id === 'orders' && c.o.limit === 1).length;
+    const recordReads = () => calls.filter((c) => c.id === 'orders' && c.o.limit === 1 && !isCardCount(c.o)).length;
     const before = recordReads();
     expect(before).toBeGreaterThan(0);
     const gridReads = () => calls.filter((c) => c.id === 'orders' && c.o.limit === 201).length;
@@ -726,7 +729,7 @@ describe('folding and lines', () => {
     await settle();
     await userEvent.click(within(data()).getByRole('button', { name: /^Hide / }));
     // Counts for cards that came into view are not row queries.
-    const rowQueries = () => calls.filter((c) => !(c.o as { uniqueCount?: unknown } | undefined)?.uniqueCount);
+    const rowQueries = () => calls.filter((c) => !isCardCount(c.o));
     const before = rowQueries().length;
     // Orders joins Customers and Stores: both become columns of its grid, which is not read while the band is folded.
     fireEvent.click(martCard('Customers'));
@@ -1374,7 +1377,7 @@ describe('folds and the saved preferences read', () => {
   test('the Data and Row bodies show a bar until the read settles, and a band saved as folded never reads rows', async () => {
     const calls: string[] = [];
     const { gate, wrap } = gated({ 'band-data': true });
-    const ctx = overrideTraverse((real) => (id, o) => { if (!o.aggregation && o.column) calls.push(id); return real(id, o); })(createMockCtx(demoFixtures(), { latencyMs: 0 }));
+    const ctx = overrideTraverse((real) => (id, o) => { if (!o.aggregation && o.column && !isCardCount(o)) calls.push(id); return real(id, o); })(createMockCtx(demoFixtures(), { latencyMs: 0 }));
     render(<AppServices ctx={wrap(ctx as Mock)}><StoreProvider><App /></StoreProvider></AppServices>);
     await waitFor(() => expect(marts()).not.toBeNull());
     await settle();
@@ -1417,7 +1420,7 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     const f = demoFixtures();
     const stores = f.marts.find((m) => m.id === 'stores')!;
     stores.fields = stores.fields.map((x) => (x.name === 'id' ? { ...x, isHiddenForReporting: true } : x));
-    const queries: { id: string; o: { column?: string[]; sort?: { column: string }[]; filter?: { column: string }[] } }[] = [];
+    const queries: { id: string; o: { column?: string[]; limit?: number; includeTotalRowCount?: boolean; sort?: { column: string }[]; filter?: { column: string }[] } }[] = [];
     await mountWith(overrideTraverse((real) => (id, o) => { queries.push({ id, o }); return real(id, o); }), f);
     await within(data()).findByRole('table');
     await search('stores');
@@ -1442,9 +1445,9 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     await userEvent.click(within(row()).getByRole('button', { name: 'Refresh' }));
     await waitFor(() => expect(queries.some((q) => q.id === 'stores' && q.o.filter?.some((x) => x.column === 'id' && typeof (x as { value?: unknown }).value === 'number'))).toBe(true));
     await waitFor(() => expect(within(row()).getAllByText(value).length).toBeGreaterThan(0));
-    // The mart is still counted by its key: Unique Count is sent for it, and no card says it cannot count.
-    expect(queries.some((q) => q.id === 'stores' && (q.o as { uniqueCount?: string[] }).uniqueCount?.[0] === '')).toBe(true);
-    expect(screen.queryByText(/Can't count records/)).toBeNull();
+    // The mart is still counted, by one column and its total row count, and no card says it cannot count.
+    expect(queries.some((q) => q.id === 'stores' && isCardCount(q.o) && q.o.column?.length === 1)).toBe(true);
+    expect(screen.queryByText(/Can't count rows/)).toBeNull();
   });
 
   test('a fresh orders grid does not show its key column, and a row still opens', async () => {

@@ -63,25 +63,32 @@ test('a plain unfiltered grid of a mart with a key gives its total to the card',
   const t = setup(plain);
   await t.mount();
   await waitFor(rowsShown);
-  await waitFor(() => expect(shown()).toMatch(/123 records/));
+  await waitFor(() => expect(shown()).toMatch(/123 rows/));
 });
 
 test('a key hidden for reporting, which the grid reads to open rows by, still gives the total to the card, and Refresh adds no count read', async () => {
   const t = setup({ ...plain, columns: ['status', 'amount', 'created_at'] }, { hiddenKey: true });
   await t.mount();
-  await waitFor(() => expect(shown()).toMatch(/123 records/));
+  await waitFor(() => expect(shown()).toMatch(/123 rows/));
   expect(t.queries.some((q) => q.column?.includes('id'))).toBe(true);
   await calm();
   const before = t.countReads().length;
   t.state.total = 456;
   await refresh();
-  await waitFor(() => expect(shown()).toMatch(/456 records/));
+  await waitFor(() => expect(shown()).toMatch(/456 rows/));
   await calm();
   expect(t.countReads()).toHaveLength(before);
 });
 
+test('with a filter on a main field the grid total is the card\'s filtered count, and no filtered read is sent', async () => {
+  const t = setup(filtered);
+  await t.mount();
+  await waitFor(() => expect(shown()).toMatch(/123 rows/));
+  await calm();
+  expect(t.queries.filter((q) => !!q.filter && q.limit === 1)).toEqual([]);
+});
+
 test.each([
-  ['a filter', filtered, {}],
   ['a calculated column', { ...plain, columns: [...plain.columns, 'margin'] }, { calc: true }],
   ['a Unique Count column', { ...plain, uniqueCount: [''] } as GridState, {}],
 ])('with %s the card does not take the grid total', async (_n, grid, opts) => {
@@ -89,7 +96,7 @@ test.each([
   await t.mount();
   await waitFor(rowsShown);
   await calm();
-  expect(shown()).not.toMatch(/123 records/);
+  expect(shown()).not.toMatch(/123 rows/);
 });
 
 test.each([
@@ -99,18 +106,18 @@ test.each([
 ])('with %s the card still takes the grid total (COUNT(*) needs no key, and joined marts never change the main row count)', async (_n, grid, opts) => {
   const t = setup(grid, opts);
   await t.mount();
-  await waitFor(() => expect(shown()).toMatch(/123 records/));
+  await waitFor(() => expect(shown()).toMatch(/123 rows/));
 });
 
 test('Refresh on a plain grid adds no count read, and the card shows the new total', async () => {
   const t = setup(plain);
   await t.mount();
-  await waitFor(() => expect(shown()).toMatch(/123 records/));
+  await waitFor(() => expect(shown()).toMatch(/123 rows/));
   await calm();
   const before = t.countReads().length;
   t.state.total = 456;
   await refresh();
-  await waitFor(() => expect(shown()).toMatch(/456 records/));
+  await waitFor(() => expect(shown()).toMatch(/456 rows/));
   await calm();
   expect(t.countReads()).toHaveLength(before);
 });
@@ -142,22 +149,22 @@ const dimmed = () => card()?.querySelector('.dm-badge.dm-stale') !== null && car
 test('Refresh on a plain grid dims the card while the grid reads, then shows the new total', async () => {
   const t = setup(plain);
   await t.mount();
-  await waitFor(() => expect(shown()).toMatch(/123 records/));
+  await waitFor(() => expect(shown()).toMatch(/123 rows/));
   await calm();
   t.state.total = 456;
   const release = t.hold();
   await refresh();
   await waitFor(() => expect(dimmed()).toBe(true));
-  expect(shown()).toMatch(/123 records/);
+  expect(shown()).toMatch(/123 rows/);
   release();
-  await waitFor(() => expect(shown()).toMatch(/456 records/));
+  await waitFor(() => expect(shown()).toMatch(/456 rows/));
   expect(dimmed()).toBe(false);
 });
 
 test('a plain Refresh whose read fails counts the card once', async () => {
   const t = setup(plain);
   await t.mount();
-  await waitFor(() => expect(shown()).toMatch(/123 records/));
+  await waitFor(() => expect(shown()).toMatch(/123 rows/));
   await calm();
   const before = t.countReads().length;
   t.state.fail = true;
@@ -169,7 +176,7 @@ test('a plain Refresh whose read fails counts the card once', async () => {
 test('a filter added while a plain Refresh reads counts the card once', async () => {
   const t = setup(plain);
   await t.mount();
-  await waitFor(() => expect(shown()).toMatch(/123 records/));
+  await waitFor(() => expect(shown()).toMatch(/123 rows/));
   await calm();
   const before = t.countReads().length;
   const release = t.hold();
@@ -189,7 +196,7 @@ test('a grouped read left in a folded band is not given to the card when the gri
   await userEvent.click(within(document.body).getByRole('button', { name: 'Hide Data' }));
   await t.apply(plain);
   await calm();
-  expect(shown()).not.toMatch(/123 records/);
+  expect(shown()).not.toMatch(/123 rows/);
 });
 
 test.each([
@@ -199,5 +206,5 @@ test.each([
   await t.mount();
   await waitFor(rowsShown);
   await calm();
-  expect(shown()).not.toMatch(/123 records/);
+  expect(shown()).not.toMatch(/123 rows/);
 });

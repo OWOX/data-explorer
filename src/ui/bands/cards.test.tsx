@@ -103,9 +103,9 @@ describe('MartCard', () => {
 
   test('count states: value, spinner, dash with retry', async () => {
     const { rerender, props } = renderMart();
-    expect(screen.getByText('12.4K records')).toBeInTheDocument();
+    expect(screen.getByText('12.4K rows')).toBeInTheDocument();
     rerender(<TooltipProvider><MartCard {...props} count={{ state: 'loading' }} /></TooltipProvider>);
-    expect(screen.getByLabelText('Counting records')).toBeInTheDocument();
+    expect(screen.getByLabelText('Counting rows')).toBeInTheDocument();
     rerender(<TooltipProvider><MartCard {...props} count={{ state: 'error', message: 'nope' }} /></TooltipProvider>);
     await userEvent.click(screen.getByText('—'));
     expect(props.onRetryCount).toHaveBeenCalledTimes(1);
@@ -115,10 +115,10 @@ describe('MartCard', () => {
   test('a card waiting for its count shows a dash that says why', async () => {
     for (const state of ['idle', 'queued'] as const) {
       const { unmount } = renderMart({ count: { state } });
-      const badge = screen.getByLabelText('Waiting to count records');
+      const badge = screen.getByLabelText('Waiting to count rows');
       expect(badge).toHaveTextContent('—');
       await userEvent.hover(badge);
-      expect((await screen.findAllByText('Waiting to count records. Up to 4 data marts count at a time.')).length).toBeGreaterThan(0);
+      expect((await screen.findAllByText('Waiting to count rows. Up to 4 data marts count at a time.')).length).toBeGreaterThan(0);
       unmount();
     }
   });
@@ -126,7 +126,7 @@ describe('MartCard', () => {
   test('a count that cannot be made shows a dash that says why', async () => {
     renderMart({ count: { state: 'ok', value: null } });
     await userEvent.hover(screen.getByText('—'));
-    expect((await screen.findAllByText("Can't count records: this data mart has no primary key and no text or boolean field.")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Can't count rows: this data mart has no field that can be read.")).length).toBeGreaterThan(0);
   });
 
   test('a ghost card and an inaccessible card show no count badge', () => {
@@ -138,9 +138,9 @@ describe('MartCard', () => {
     expect(screen.getByText('No access')).toBeInTheDocument();
   });
 
-  test('a count of one is a record, not records', () => {
+  test('a count of one is a row, not rows', () => {
     renderMart({ count: { state: 'ok', value: 1 } });
-    expect(screen.getByText('1 record')).toBeInTheDocument();
+    expect(screen.getByText('1 row')).toBeInTheDocument();
   });
 
   test('a quality state with no sentence of its own names itself once', () => {
@@ -304,40 +304,65 @@ describe('tooltips', () => {
   });
 });
 
-describe('the match badge', () => {
-  test('follows the count badge, with the numbers in its tooltip', async () => {
-    const { container } = renderMart({ count: { state: 'ok', value: 12300 }, matched: 1480 });
-    const badges = [...container.querySelectorAll('.dm-badges-row .dm-badge')].map((b) => b.textContent);
-    expect(badges).toEqual(['12.3K records', '12% match']);
-    await userEvent.hover(screen.getByText('12% match'));
-    expect((await screen.findAllByText('1,480 of 12,300 records match the filters and slices')).length).toBeGreaterThan(0);
+describe('the row count badge', () => {
+  test('an unfiltered count says rows, and its tooltip is the exact number', async () => {
+    renderMart({ count: { state: 'ok', value: 1234 } });
+    expect(screen.getByText('1.2K rows')).toBeInTheDocument();
+    await userEvent.hover(screen.getByText('1.2K rows'));
+    expect((await screen.findAllByText('1,234 rows')).length).toBeGreaterThan(0);
   });
-  test('is absent when everything matches, with no matched number, or while the count is not known', () => {
-    renderMart({ count: { state: 'ok', value: 100 }, matched: 100 });
-    expect(screen.queryByText(/match$/)).toBeNull();
-    cleanup();
-    renderMart({ count: { state: 'ok', value: 100 } });
-    expect(screen.queryByText(/match$/)).toBeNull();
-    cleanup();
-    renderMart({ count: { state: 'loading' }, matched: 5 });
-    expect(screen.queryByText(/match$/)).toBeNull();
-    cleanup();
-    renderMart({ count: { state: 'ok', value: null }, matched: 5 });
-    expect(screen.queryByText(/match$/)).toBeNull();
+  test('a filtered count replaces it, and its tooltip gives it out of the total', async () => {
+    const { container } = renderMart({ count: { state: 'ok', value: 1234 }, filtered: { state: { state: 'ok', value: 56 }, partial: false } });
+    expect([...container.querySelectorAll('.dm-badges-row .dm-badge')].map((b) => b.textContent)).toEqual(['56 rows']);
+    await userEvent.hover(screen.getByText('56 rows'));
+    expect((await screen.findAllByText("56 of 1,234 rows match this data mart's filters")).length).toBeGreaterThan(0);
   });
-  test('a ghost and a mart with no access show none', () => {
-    renderMart({ ghost: true, count: { state: 'ok', value: 100 }, matched: 5 });
-    expect(screen.queryByText(/match$/)).toBeNull();
+  test('a filtered count with no known total says only how many rows match', async () => {
+    renderMart({ count: { state: 'loading' }, filtered: { state: { state: 'ok', value: 56 }, partial: false } });
+    await userEvent.hover(screen.getByText('56 rows'));
+    expect((await screen.findAllByText("56 rows match this data mart's filters")).length).toBeGreaterThan(0);
+  });
+  test('a filtered error retries the filtered read, not the count', async () => {
+    const onRetryFiltered = vi.fn();
+    const { props } = renderMart({ filtered: { state: { state: 'error', message: 'nope' }, partial: false }, filteredRetry: onRetryFiltered });
+    await userEvent.click(screen.getByText('—'));
+    expect(onRetryFiltered).toHaveBeenCalledTimes(1);
+    expect(props.onRetryCount).not.toHaveBeenCalled();
+    expect(props.onSelect).not.toHaveBeenCalled();
+  });
+  test('a filtered count under way shows the waiting and counting badges', () => {
+    renderMart({ filtered: { state: { state: 'queued' }, partial: false } });
+    expect(screen.getByLabelText('Waiting to count rows')).toBeInTheDocument();
     cleanup();
-    renderMart({ mart: { ...mart, accessible: false }, count: { state: 'ok', value: 100 }, matched: 5 });
+    renderMart({ filtered: { state: { state: 'loading' }, partial: false } });
+    expect(screen.getByLabelText('Counting rows')).toBeInTheDocument();
+  });
+  test('rules that cannot be counted leave the unfiltered count and a note in the tooltip', async () => {
+    renderMart({ count: { state: 'ok', value: 1234 }, filtered: { partial: true } });
+    await userEvent.hover(screen.getByText('1.2K rows'));
+    expect((await screen.findAllByText('1,234 rows Filters on calculated fields are not counted.')).length).toBeGreaterThan(0);
+  });
+  test('the note ends the tooltip of a filtered count too', async () => {
+    renderMart({ count: { state: 'ok', value: 1234 }, filtered: { state: { state: 'ok', value: 56 }, partial: true } });
+    await userEvent.hover(screen.getByText('56 rows'));
+    expect((await screen.findAllByText("56 of 1,234 rows match this data mart's filters Filters on calculated fields are not counted.")).length).toBeGreaterThan(0);
+  });
+  test('no match badge is ever drawn', () => {
+    const { container } = renderMart({ count: { state: 'ok', value: 100 }, filtered: { state: { state: 'ok', value: 5 }, partial: false } });
+    expect(container.querySelector('[data-match]')).toBeNull();
+  });
+  test('a ghost and a mart with no access show no filtered count', () => {
+    renderMart({ ghost: true, count: { state: 'ok', value: 100 }, filtered: { state: { state: 'ok', value: 5 }, partial: false } });
+    expect(screen.queryByText(/rows$/)).toBeNull();
+    cleanup();
+    renderMart({ mart: { ...mart, accessible: false }, count: { state: 'ok', value: 100 }, filtered: { state: { state: 'ok', value: 5 }, partial: false } });
     expect(screen.getByText('No access')).toBeInTheDocument();
-    expect(screen.queryByText(/match$/)).toBeNull();
+    expect(screen.queryByText(/rows$/)).toBeNull();
   });
 });
 
 describe('a previous read\'s numbers on a card', () => {
   const dimmed = (el: Element | null) => !!el?.classList.contains('dm-stale') && el.getAttribute('aria-busy') === 'true';
-  const filtered = { matched: 1240 };
 
   test('a count that is being recounted is dimmed and busy, a fresh one is not', () => {
     const { container, rerender } = renderMart({ count: { state: 'ok', value: 12400, stale: true } });
@@ -349,18 +374,13 @@ describe('a previous read\'s numbers on a card', () => {
     expect(badge()).not.toHaveAttribute('aria-busy');
   });
 
-  test('a match badge kept from the previous filters is dimmed and busy, a fresh one is not', () => {
-    const { container, rerender } = renderMart({ ...filtered, matchedStale: true });
-    const match = () => container.querySelector('[data-match]');
-    expect(match()).toHaveTextContent('% match');
-    expect(dimmed(match())).toBe(true);
-    rerender(<TooltipProvider><MartCard {...martProps({ ...filtered })} /></TooltipProvider>);
-    expect(match()).not.toHaveClass('dm-stale');
-    expect(match()).not.toHaveAttribute('aria-busy');
-  });
-
-  test('a match badge compared with a count being recounted is dimmed', () => {
-    const { container } = renderMart({ ...filtered, count: { state: 'ok', value: 12400, stale: true } });
-    expect(dimmed(container.querySelector('[data-match]'))).toBe(true);
+  test('a filtered count kept from the previous filters is dimmed and busy, a fresh one is not', () => {
+    const { container, rerender } = renderMart({ filtered: { state: { state: 'ok', value: 56, stale: true }, partial: false } });
+    const badge = () => container.querySelector('.dm-badge');
+    expect(badge()).toHaveTextContent('56 rows');
+    expect(dimmed(badge())).toBe(true);
+    rerender(<TooltipProvider><MartCard {...martProps({ filtered: { state: { state: 'ok', value: 56 }, partial: false } })} /></TooltipProvider>);
+    expect(badge()).not.toHaveClass('dm-stale');
+    expect(badge()).not.toHaveAttribute('aria-busy');
   });
 });
