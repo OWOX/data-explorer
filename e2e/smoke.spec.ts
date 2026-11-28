@@ -31,16 +31,8 @@ async function openColumnSub(data: Locator, title: string, row: 'Filter' | 'Aggr
 }
 
 /** Adds the mart to the grid with a click (the new card is selected), then promotes it with the header's "Make it main" button. */
-async function makeMain(page: Page, title: string, plain = false) {
+async function makeMain(page: Page, title: string) {
   await martCard(page, title).click();
-  // The card joins the mart with its Unique Count alone, which groups the grid: `plain` swaps that for a field of its own.
-  if (plain) {
-    await openFields(page, title);
-    const panel = page.getByRole('dialog', { name: title, exact: true });
-    await panel.getByLabel('name', { exact: true }).click();
-    await panel.getByRole('option', { name: 'Unique Count' }).click();
-    await closeConfig(page);
-  }
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Orders', title]);
   await band(page, 'marts').getByRole('button', { name: /^Make it main: / }).click();
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText([title]);
@@ -278,7 +270,7 @@ test('a mart Orders cannot join is not in the band, not even as a ghost; a searc
 test('a reference column shows the stored value as plain text; Referenced by opens the referencing mart, and Undo restores the record', async ({ page }) => {
   await ordersGrid(page);
   const row = band(page, 'row');
-  await makeMain(page, 'Customers', true);
+  await makeMain(page, 'Customers');
   const data = band(page, 'data');
   await expect(data.getByRole('row')).toHaveCount(62);
   await data.getByRole('row').nth(2).click();
@@ -790,7 +782,7 @@ test('a link to a data mart the opener cannot see shows a notice and the page st
   await expect(band(opened, 'data').locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Order Items');
 });
 
-test('a Sum on Amount groups the rows by the other columns; the badge counts groups and a group opens no record', async ({ page }) => {
+test('a Sum on Amount groups the rows by the other columns; the badge counts groups and a group keyed by the shown primary key opens its record', async ({ page }) => {
   const data = await ordersGrid(page);
   await tick(page, 'Amount');
   await openColumnSub(data, 'Amount', 'Aggregate');
@@ -803,7 +795,7 @@ test('a Sum on Amount groups the rows by the other columns; the badge counts gro
   await expect(data.getByText(/\d+\+? groups?$/)).toBeVisible();
   await expect(data.getByText(/records$/)).toHaveCount(0);
   await data.getByRole('row').nth(2).click();
-  await expect(band(page, 'row').getByText('Grouped rows have no single record.')).toBeVisible();
+  await expect(band(page, 'row').getByRole('heading', { name: /^Orders · \d+$/ })).toBeVisible();
   // unticking everything and applying brings the rows back
   await data.getByRole('button', { name: 'Aggregate Amount' }).click();
   const dlg = page.getByRole('dialog');

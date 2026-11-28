@@ -31,7 +31,7 @@ import { groupMap, moveColumn, moveColumnBy, orderColumns, ownInSchemaOrder } fr
 import { buildJoinTree, joinableUnder } from '../../state/join-tree';
 import { inUsePaths, joinedMartIds, pathTitle, shownOfMart } from '../../state/join-plan';
 import type { Field, Model, Schema } from '../../model/types';
-import { hasPrimaryKey, primaryKeys } from '../../records/relationships';
+import { hasPrimaryKey, keyIsGrouped, primaryKeys } from '../../records/relationships';
 import type { Row } from '../../sdk/types';
 import type { SavedView } from '../../api/grid-columns';
 import { sourceOfModel, useServices, useStore, type GridState } from '../../state/store';
@@ -831,7 +831,9 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
     pickRow: (r, e) => { latest.current.pickHeader('row', r, e.shiftKey); if (e.shiftKey) e.stopPropagation(); },
     open: (row) => latest.current.openRow(row),
   }), [latest]);
-  const clickable = pks.length > 0 && !grouped;
+  // A grouped row is one record when every part of the main mart's key is a group column (shown, no function, no date bucket): it opens by the key values in the row.
+  const keyGrouped = keyIsGrouped(pks, shown, aggNow);
+  const clickable = pks.length > 0 && (!grouped || keyGrouped);
 
   return (
     <ColumnMenuEnvContext.Provider value={menuEnv}>
