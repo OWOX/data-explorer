@@ -32,3 +32,8 @@ test('regex matches the text and never a NULL; not_regex keeps a NULL', () => {
   expect(matchesFilter(r, { column: 'gone', operator: 'regex', value: '.*' } as never)).toBe(false);
   expect(matchesFilter(r, { column: 'gone', operator: 'not_regex', value: '.*' } as never)).toBe(true);
 });
+
+test('a leading (?i) makes the regex case-insensitive', () => {
+  expect(matchesFilter(row, { column: 'name', operator: 'regex', value: '(?i)^ALICE$' } as never)).toBe(true);
+  expect(matchesFilter(row, { column: 'name', operator: 'regex', value: '^ALICE$' } as never)).toBe(false);
+});
