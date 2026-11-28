@@ -82,16 +82,24 @@ test('a key hidden for reporting, which the grid reads to open rows by, still gi
 
 test.each([
   ['a filter', filtered, {}],
-  ['a joined column', { ...plain, columns: [...plain.columns, 'products__price'] }, {}],
   ['a calculated column', { ...plain, columns: [...plain.columns, 'margin'] }, { calc: true }],
   ['a Unique Count column', { ...plain, uniqueCount: [''] } as GridState, {}],
-  ['no primary key', plain, { noKey: true }],
 ])('with %s the card does not take the grid total', async (_n, grid, opts) => {
   const t = setup(grid, opts);
   await t.mount();
   await waitFor(rowsShown);
   await calm();
   expect(shown()).not.toMatch(/123 records/);
+});
+
+test.each([
+  ['a joined column', { ...plain, columns: [...plain.columns, 'products__price'] }, {}],
+  ['a slice', { ...plain, slices: { customers__country_code: { field: 'customers__country_code', op: 'eq', value: 'PL' } } } as GridState, {}],
+  ['no primary key', plain, { noKey: true }],
+])('with %s the card still takes the grid total (COUNT(*) needs no key, and joined marts never change the main row count)', async (_n, grid, opts) => {
+  const t = setup(grid, opts);
+  await t.mount();
+  await waitFor(() => expect(shown()).toMatch(/123 records/));
 });
 
 test('Refresh on a plain grid adds no count read, and the card shows the new total', async () => {
@@ -185,7 +193,6 @@ test('a grouped read left in a folded band is not given to the card when the gri
 });
 
 test.each([
-  ['a slice', { ...plain, slices: { customers__country_code: { field: 'customers__country_code', op: 'eq', value: 'PL' } } } as GridState, {}],
   ['a filter on a calculated field', { ...plain, filters: { margin: { field: 'margin', op: 'gt', value: 1 } } } as GridState, { calc: true }],
 ])('with %s the card does not take the grid total', async (_n, grid, opts) => {
   const t = setup(grid, opts);

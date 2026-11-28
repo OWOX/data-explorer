@@ -1433,21 +1433,3 @@ test('Charts under a filter: the match badge joins the scorecard read and sends 
   expect(sent.filter(isBadge)).toHaveLength(0);
   expect(sent.filter(isBareRange)).toHaveLength(0);
 });
-
-test('a filter set in Table, then Charts: the badge read serves the cards and one range read goes out', async () => {
-  // A grouped Table cannot take the card's count from its total, so it sends the badge read.
-  const t = setup({ columns: SINGLE, aggregations: [{ column: 'amount', function: 'SUM' }] });
-  await t.seeded;
-  t.view();
-  await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
-  await filterStatus();
-  await waitFor(() => expect(t.queries.some(isBadge)).toBe(true));
-  const before = t.queries.length;
-  await userEvent.click(radio('Charts'));
-  await waitFor(() => expect(group('orders')).not.toBeNull());
-  await waitFor(() => expect(t.queries.slice(before).some(isSpark)).toBe(true));
-  const sent = t.queries.slice(before);
-  expect(sent.filter(isScore)).toHaveLength(0);
-  expect(sent.filter(isBareRange)).toHaveLength(1);
-  expect(within(group('orders')!).queryByLabelText(/Loading/)).toBeNull();
-});

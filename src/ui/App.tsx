@@ -7,7 +7,7 @@ import { joinedMartIds } from '../state/join-plan';
 import { sourceOfModel, useServices, useStore } from '../state/store';
 import { CardBands } from './bands/CardBands';
 import { DataBand } from './bands/DataBand';
-import type { Matched } from './bands/matched';
+import type { CardRules } from '../filters/card-rules';
 import { RowBand } from './bands/RowBand';
 import { LoadingBands } from './bands/LoadingBands';
 import { ErrorBox } from './ErrorBox';
@@ -19,6 +19,7 @@ import { useJoinSources } from './useJoinSources';
 import { useViewLink } from './useViewLink';
 import { buildJoinTree, statusIds } from '../state/join-tree';
 import { useCardStatus, useModel } from './useModelData';
+import { useFilteredCounts } from './useFilteredCounts';
 
 export function App() {
   return <TooltipProvider><AppBody /></TooltipProvider>;
@@ -71,8 +72,8 @@ function AppBody() {
   // Precedence: a band the member clicked, then the view link's fold, then the saved one, then the default.
   // Full screen shows the Data band alone. It is never saved: a page always opens in the normal layout.
   const [fs, setFs] = useState(false);
-  // How many records of each mart of the report the filters and slices keep, told by the grid for the cards. Memory only: no save, no Undo step.
-  const [matched, setMatched] = useState<Matched | null>(null);
+  // The rules each card of the report counts, told by the grid for the cards. Memory only: no save, no Undo step.
+  const [cardRulesOf, setCardRulesOf] = useState<{ martId: string; byPath: ReadonlyMap<string, CardRules> } | null>(null);
   const [touched, setTouched] = useState<Partial<Record<Fold, boolean>>>({});
   const [linkFolds, setLinkFolds] = useState<Partial<Record<Fold, boolean>>>({});
   const folded = (band: Fold) => touched[band] ?? linkFolds[band] ?? folds[band] ?? DEFAULT_FOLDED[band];
@@ -140,6 +141,7 @@ function AppBody() {
   const reportTree = useMemo(() => (mainId ? buildJoinTree(mainId, mainColumns ?? [], joinSources ?? [], mainEmptyPaths) : null), [mainId, mainColumns, joinSources, mainEmptyPaths]);
   const statusIdList = useMemo(() => statusIds(visible?.ids ?? [], reportTree), [visible, reportTree]);
   const { dq, counts, request, offer, hold, recount } = useCardStatus(model, statusIdList, state.modelVersion);
+  const { filtered: filteredCounts, retry: retryFiltered, seed: seedFiltered, forget: forgetFilteredOf } = useFilteredCounts(model, cardRulesOf?.byPath ?? null);
 
   // There is always a selected mart after load: the first load picks the focus mart, and a mart or
   // source a refresh took away is dropped from the selection (no history entry, so Back is not trapped).
@@ -241,7 +243,8 @@ function AppBody() {
           mainColumns={mainColumns ?? []}
           mainEmptyPaths={mainEmptyPaths}
           counts={counts}
-          matched={matched}
+          filtered={cardRulesOf?.martId === mainId ? filteredCounts : undefined}
+          filteredRetry={retryFiltered}
           dq={dq}
           foldedSources={folded('sources')}
           foldedMarts={folded('marts')}
@@ -253,7 +256,7 @@ function AppBody() {
           loading={loading}
         >
           {/* While the bar shows, neither band reads anything: the saved folds are not known yet, and one saved as folded must not read rows first. */}
-          <DataBand onMatched={setMatched} onCount={offer} onCardHold={hold} onRecount={(id) => void recount(id)} model={model} folded={folded('data')} onFold={() => toggle('data')} loading={loading} fullScreen={{ on: fs, onToggle: () => setFs((f) => !f) }} />
+          <DataBand onCardRules={setCardRulesOf} onCount={offer} onFilteredTotal={seedFiltered} onForgetFiltered={forgetFilteredOf} onCardHold={hold} onRecount={(id) => void recount(id)} model={model} folded={folded('data')} onFold={() => toggle('data')} loading={loading} fullScreen={{ on: fs, onToggle: () => setFs((f) => !f) }} />
           <RowBand model={model} folded={folded('row')} onFold={() => toggle('row')} loading={loading} />
         </CardBands>
       </main>

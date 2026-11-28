@@ -29,7 +29,7 @@ function useSchema(martId: string, version: number) {
 
 
 /** The grid for one mart: loads the schema, then reads rows. Key it by mart id. */
-export function MartGrid({ martId, model, seed, onChange, onHold, onRebase, onRelease, onRows, onMatched, onTotal, onCardHold, onRecount, paused = false }: GridProps & { /** The band is folded: nothing is read until it opens. */ paused?: boolean }) {
+export function MartGrid({ martId, model, seed, onChange, onHold, onRebase, onRelease, onRows, onCardRules, onTotal, onFilteredTotal, onForgetFiltered, onCardHold, onRecount, paused = false }: GridProps & { /** The band is folded: nothing is read until it opens. */ paused?: boolean }) {
   const [schemaVersion, setSchemaVersion] = useState(0);
   const { schema, error, failure } = useSchema(martId, schemaVersion);
   const { schemas, blendable } = useServices();
@@ -37,7 +37,7 @@ export function MartGrid({ martId, model, seed, onChange, onHold, onRebase, onRe
   const refreshMart = useCallback(() => { schemas.invalidate(martId); blendable.invalidate(martId); setSchemaVersion((v) => v + 1); }, [schemas, blendable, martId]);
   if (error) return <div className="p-4"><ErrorBox error={error} onRetry={() => setSchemaVersion((v) => v + 1)} /></div>;
   if (!schema) return <Skeleton rows={8} />;
-  return <SeededGrid martId={martId} model={model} schema={schema} seed={seed} onChange={onChange} onHold={onHold} onRebase={onRebase} onRelease={onRelease} onRows={onRows} onMatched={onMatched} onTotal={onTotal} onCardHold={onCardHold} onRecount={onRecount} paused={paused} onRefresh={refreshMart} refreshError={failure} />;
+  return <SeededGrid martId={martId} model={model} schema={schema} seed={seed} onChange={onChange} onHold={onHold} onRebase={onRebase} onRelease={onRelease} onRows={onRows} onCardRules={onCardRules} onTotal={onTotal} onFilteredTotal={onFilteredTotal} onForgetFiltered={onForgetFiltered} onCardHold={onCardHold} onRecount={onRecount} paused={paused} onRefresh={refreshMart} refreshError={failure} />;
 }
 
 /** A saved-columns read slower than this is given up on for this mount. */

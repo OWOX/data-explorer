@@ -193,6 +193,10 @@ export function MartCard({
   matched?: number;
   /** The matched number is the previous filters' while the new count is under way: dimmed. */
   matchedStale?: boolean;
+  /** The count of this card's own rules, read by the page (`useFilteredCounts`); Task 5 draws it. */
+  filtered?: { state?: CountState; partial: boolean };
+  /** Reads `filtered` again after an error. */
+  filteredRetry?: () => void;
   /** Takes this joined mart out of the report; when absent the card has no ×. */
   onRemove?: () => void;
   /** Graph only: the (+) on the right edge that shows the marts that can join under this card. Absent when none can, and in the Grid. */

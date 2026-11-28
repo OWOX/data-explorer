@@ -89,12 +89,11 @@ type Scores = ChartResult & { previous?: Row | null };
 
 /**
  * One query for every value card of every data mart: a filter change or an added mart is one billed read, not one per mart.
- * `kept` are the marts the report keeps with no column: their unique count rides on this read, and the match badges of the cards read it.
  * `previous` is the last row a read returned, kept so the cards do not fall back to skeletons while the next read runs. Nothing runs while paused.
  */
-export function useScorecards(martId: string, cf: ChartFields, filter: TraverseFilter[], version: number, paused: boolean, joins?: JoinGrain, kept?: readonly string[], ranges: Field[] = []): Scores {
+export function useScorecards(martId: string, cf: ChartFields, filter: TraverseFilter[], version: number, paused: boolean, joins?: JoinGrain, ranges: Field[] = []): Scores {
   // `ranges` ride on the read. The same ask without them is enough for the cards, so a cached read of it (Table's badge) still serves them with no read.
-  const result = useChartQuery(martId, paused ? null : scoreQuery(cf, filter, kept, ranges), version, joins, ranges.length && !paused ? scoreQuery(cf, filter, kept) : undefined);
+  const result = useChartQuery(martId, paused ? null : scoreQuery(cf, filter, ranges), version, joins, ranges.length && !paused ? scoreQuery(cf, filter) : undefined);
   const [previous, setPrevious] = useState<Row | null>(null);
   // Adjusting state while rendering (not in an effect) so the card never paints a frame without the previous value.
   const latest = result.rows?.[0] ?? null;
@@ -108,9 +107,9 @@ export function useScorecards(martId: string, cf: ChartFields, filter: TraverseF
  * The dates whose Auto range the scorecard read carries: the charts' lead date when its bucket is Auto, and each card's own date when that card ranges it.
  * Only a date of the main mart that can be ranged, and only when the scorecard read joins no other mart (a joined mart would make the sparklines wait for its sleeves).
  */
-export function carriedDates(cf: ChartFields, spark: Spark, leadAuto: boolean, kept: readonly string[] = []): Field[] {
+export function carriedDates(cf: ChartFields, spark: Spark, leadAuto: boolean): Field[] {
   const read = cf.marts.filter((m) => m.metrics.length > 0 || m.hasPk);
-  const main = read.length > 0 && read.every((m) => m.aliasPath === '') && kept.length === 0;
+  const main = read.length > 0 && read.every((m) => m.aliasPath === '');
   if (!main) return [];
   const asked: Field[] = [];
   if (leadAuto && spark.date) asked.push(spark.date);

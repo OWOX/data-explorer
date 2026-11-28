@@ -13,14 +13,13 @@ import { keepEmpty } from '../../model/empty-paths';
 import { dropUniqueSorts, keepUnique, uniqueField, uniqueKey, uniquePathsOf, withUniqueAfter } from '../../model/unique-count';
 import { ruleNewColumns } from '../../charts/fields';
 import { chartSetsOf, usesKeys } from '../../charts/chartSets';
-import { joinGrainOf } from '../../charts/answers';
-import { countsOf, scoreQuery, scoreRulesLost } from '../../charts/queries';
-import { useChartQuery } from '../../charts/useChartQuery';
 import { keysPlan, useHavingKeys } from '../../charts/havingKeys';
 import { readRows } from '../../api/rows';
 import { canSuggest, valuesOf, valuesQuery } from '../../filters/valueSuggest';
 import { dropOrphanHaving, toTraverseFilters, type ColumnFilter } from '../../filters/build';
 import { sliceField } from '../../filters/slice';
+import { cardRules, mainOnly, type CardRules } from '../../filters/card-rules';
+import { filteredKey } from '../../api/filtered-counts';
 import { ChartsBody } from '../../charts/ChartsBody';
 import type { MenuItem } from '../../charts/ChartMenu';
 import { ConfigMenuSlot } from '../../charts/menuSlot';
@@ -41,7 +40,6 @@ import { removedAggregation, unappliedFilter } from './unapplied';
 import { Skeleton } from '../Skeleton';
 import { Hint } from '../Tooltip';
 import { BandTools, BandToolsSlot } from '../bands/BandTools';
-import { matchedFrom } from '../bands/matched';
 import { CardClickContext } from '../bands/CardClick';
 import { useLatest } from '../useLatest';
 import { PickedIcon } from '../bands/picked';
@@ -86,7 +84,6 @@ const blockedText = (field: Field) => `"${columnTitle(field)}" can't be grouped:
 
 /** A stable empty sort list, so a memo on it does not rerun each render. */
 const NO_SORTS: SortKey[] = [];
-const NO_MATCH: ReadonlyMap<string, number> = new Map();
 
 /** `saved` is the grid as the reader left it; `filters` only changes when a followed link asks a mounted grid to re-seed. */
 type GridSeed = { filters?: ColumnFilter[]; saved?: GridState };
@@ -94,7 +91,7 @@ type GridSeed = { filters?: ColumnFilter[]; saved?: GridState };
 /** Why a grid is a preview: the mart has no primary key, or a part of its key is one a read cannot name (inside a RECORD, or calculated). */
 export type NoKey = false | 'missing' | 'hidden';
 /** What the page hands the grid: the mart, what it opens with, and where its changes go. */
-export type GridProps = { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState, edit?: boolean) => void; onRows?: (label: string | null, grouped?: boolean, noKey?: NoKey, stale?: boolean) => void; /** How many records of each data mart (by alias path) the filters and slices keep; null when the grid goes away. Told again only when the counts change. */ onMatched?: (byPath: ReadonlyMap<string, number> | null, stale?: boolean) => void; /** The grid begins holding its saves for the saved view: edits from now on are recorded on defaults. */ onHold?: () => void; /** The late saved view replaced parts of the grid a held edit was recorded on: Undo's "before" takes them too. */ onRebase?: (parts: Partial<GridState>) => void; /** The hold ends with nothing to rebase (the grid unmounted, or there was no saved view). */ onRelease?: () => void; /** The grid's total row count, when it is also the main data mart's record count (a plain, unfiltered read of its own columns, on a mart with a primary key). */ onTotal?: (total: number) => void; /** A Refresh that the grid's own total will answer: the card's count is dimmed until it arrives (no read). */ onCardHold?: () => void; /** Refresh when the grid's next read cannot refresh the card's record count, or a held Refresh whose total did not arrive: the card is counted again. */ onRecount?: () => void };
+export type GridProps = { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState, edit?: boolean) => void; onRows?: (label: string | null, grouped?: boolean, noKey?: NoKey, stale?: boolean) => void; /** The rules each card of the report counts, by alias path ('' is the main mart); null when the grid goes away. Told again only when they change. */ onCardRules?: (byPath: ReadonlyMap<string, CardRules> | null) => void; /** The grid begins holding its saves for the saved view: edits from now on are recorded on defaults. */ onHold?: () => void; /** The late saved view replaced parts of the grid a held edit was recorded on: Undo's "before" takes them too. */ onRebase?: (parts: Partial<GridState>) => void; /** The hold ends with nothing to rebase (the grid unmounted, or there was no saved view). */ onRelease?: () => void; /** The grid's total row count, when it is also the main data mart's unfiltered count (a plain read with no main rule: COUNT(*) of the mart, no key needed). */ onTotal?: (total: number) => void; /** The same total when the read has main rules: the count of those rules (`filteredKey` of them), for the main card. */ onFilteredTotal?: (key: string, n: number) => void; /** Refresh: the filtered counts of this mart are forgotten and read again. */ onForgetFiltered?: () => void; /** A Refresh that the grid's own total will answer: the card's count is dimmed until it arrives (no read). */ onCardHold?: () => void; /** Refresh when the grid's next read cannot refresh the card's record count, or a held Refresh whose total did not arrive: the card is counted again. */ onRecount?: () => void };
 
 export const aggOf = (g: GridState | undefined): Aggregation => (g && (g.aggregations?.length || g.dateTrunc?.length) ? { aggregations: g.aggregations ?? [], dateTrunc: g.dateTrunc ?? [] } : NO_AGGREGATION);
 
@@ -118,7 +115,7 @@ const nextSorts = (field: string, direction: SortDirection | null) => (cur: Sort
 
 const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Object.fromEntries(list.map((f) => [f.field, f]));
 
-export function Grid({ martId, model, schema: native, seed, holdView, lateView, initialColumns, initialSources, initialAgg, onChange, onHold, onRebase, onRelease, onRows, onMatched, onTotal, onCardHold, onRecount, paused, onRefresh, refreshError }: GridProps & { schema: Schema; paused: boolean; onRefresh: () => void; refreshError: unknown; /** The member's saved view is still being read: its saves wait. */ holdView: boolean; /** The saved view, once a late read delivers it: parts the member has not touched since the grid opened take its values. */ lateView: SavedView | null | undefined; initialColumns: string[]; initialAgg: Aggregation; initialSources: JoinedSource[] | null }) {
+export function Grid({ martId, model, schema: native, seed, holdView, lateView, initialColumns, initialSources, initialAgg, onChange, onHold, onRebase, onRelease, onRows, onCardRules, onTotal, onFilteredTotal, onForgetFiltered, onCardHold, onRecount, paused, onRefresh, refreshError }: GridProps & { schema: Schema; paused: boolean; onRefresh: () => void; refreshError: unknown; /** The member's saved view is still being read: its saves wait. */ holdView: boolean; /** The saved view, once a late read delivers it: parts the member has not touched since the grid opened take its values. */ lateView: SavedView | null | undefined; initialColumns: string[]; initialAgg: Aggregation; initialSources: JoinedSource[] | null }) {
   const { columnStore, blendable, chartSettings } = useServices();
   // Set by the open charts body: the hidden columns whose card picks it drops (it holds the loaded settings).
   const pruneCards = useRef<((hidden: string[]) => boolean) | null>(null);
@@ -739,58 +736,32 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   // The scorecard read waits while the charts are not shown, the band is folded, the grid is blocked, or no number column is shown (the scorecards have nothing to read). The keys read waits for something that uses its rule (a scorecard, or a visible chart that resolves on any field of the report's marts): the charts draw hidden fields too and must follow a HAVING filter, but nothing else is billed.
   const reportGroups = useMemo(() => (mainEmpty ? [{ path: '', title: model.marts.get(martId)?.title ?? martId, icon: model.marts.get(martId)?.icon }, ...groups] : groups), [mainEmpty, model, martId, groups]);
   const sets = useMemo(() => chartSetsOf(schema, shown, aggNow, martId, groups, reportGroups, pathMarts, sources), [schema, shown, aggNow, martId, groups, reportGroups, pathMarts, sources]);
-  const scoreFields = sets.cf;
   const savedHere = storeCharts[martId];
   const usesKeysNow = useMemo(() => usesKeys(savedHere, sets.cf, sets.chart), [savedHere, sets]);
   const having = useHavingKeys(martId, keysRead, keyField, version, !charts || paused || !!blocked || !usesKeysNow);
   const chartFilter = useMemo(() => (having.rule ? [...traverseFilters, having.rule] : traverseFilters), [traverseFilters, having.rule]);
-  // The match badges of the cards. A filter or a slice applies when it reaches the query; a parked, incomplete or HAVING one does not.
-  const applies = traverseFilters.length > 0;
-  // While any HAVING filter is set the count would be of groups the charts cannot follow the same way: no badge in either view and no read for it here.
-  const havingSet = keysRead.kind !== 'off';
-  // The marts the report keeps with no column that have a usable key: their count rides on the scorecard read, while a rule applies, in Table and in Charts alike.
-  // The main mart with no column counts too (as '', first) when it has a key: no scorecard of it, but its match badge needs the count.
-  const keptUnique = useMemo(() => (applies && !havingSet ? [...(mainEmpty && mainKey ? [''] : []), ...pathMarts.filter((m) => m.empty && sources.some((x) => x.aliasPath === m.path && x.uniqueCount)).map((m) => m.path)] : []), [applies, havingSet, mainEmpty, mainKey, pathMarts, sources]);
-  // Charts reads when a shown field is a number or a key, or when the empty main mart's count rides on the read (its card shows the badge): the same read ChartsBody shares.
-  const chartable = useMemo(() => keptUnique.includes('') || !scoreFields.marts.every((m) => m.metrics.length === 0 && !m.hasPk), [scoreFields, keptUnique]);
-  // The same query as the scorecards of Charts (one builder, one key): a read that Charts asks is shared, and Table's read is served to Charts from the cache.
-  const full = useMemo(() => (applies && !havingSet ? scoreQuery(scoreFields, traverseFilters, keptUnique) : null), [applies, havingSet, scoreFields, traverseFilters, keptUnique]);
-  // A query that counts nothing shows no badge, and one built without a slice (no metric and no countable field to carry it) would not be the member's: no read, no badge.
-  const counts = !!full?.uniqueCount?.length && !scoreRulesLost(traverseFilters, full);
-  // The grid's own count is the main mart's matched count when the grid is plain rows of the main mart alone (a joined mart or a group changes what a row is),
-  // every rule is on the main mart's own fields, and the total was not made by a read that named a calculated field. It stays through Load more and a sort.
-  const ownTotal = !charts && !grouped && !counted.exact && tree.nodes.size === 1 && traverseFilters.every((f) => !byName.get(f.column)?.joined)
-    && (counted.total === null || counted.columns.every((c) => !byName.get(c)?.joined));
-  const settled = !paused && asked === query && !reading;
-  // Table asks the scorecard query only when the grid's count cannot answer: not while its read is under way, not after it failed, and not when it came with a count.
-  const needsRead = counts && (charts ? chartable : !(ownTotal && (!settled || counted.total !== null || error)));
-  const joinGrain = useMemo(() => joinGrainOf(sources, metricNames), [sources, metricNames]);
-  const scoreOptions = !paused && !blocked && sourcesRead && needsRead ? full : null;
-  // Table first looks for the counts alone in a read it already has (another number column or function does not change them); Charts need their own cards.
-  const score = useChartQuery(martId, scoreOptions, version, joinGrain, !charts && scoreOptions ? countsOf(scoreOptions) : null, !charts && !!error);
-  const matched = useMemo(() => {
-    if (!applies || havingSet || paused || blocked) return NO_MATCH;
-    if (ownTotal && counted.total !== null) return new Map([['', counted.total]]);
-    if (!counts) return NO_MATCH;
-    if (score.error || !score.rows) return NO_MATCH;
-    return matchedFrom(score.rows[0], [...scoreFields.marts.filter((m) => m.hasPk).map((m) => m.aliasPath), ...keptUnique]);
-  }, [applies, havingSet, paused, blocked, counts, ownTotal, counted.total, score.rows, score.error, scoreFields, keptUnique]);
-  // While the count for the new filters is under way the badges keep the last one, dimmed, instead of vanishing and coming back. No read is added: this only remembers a map.
-  const matchPending = !paused && !blocked && applies && !havingSet && counts && (scoreOptions ? score.loading && !score.held : ownTotal && !settled && !error && counted.total === null);
-  const [lastMatched, setLastMatched] = useState(NO_MATCH);
-  if (matched.size > 0 && lastMatched !== matched) setLastMatched(matched);
-  else if (matched.size === 0 && !matchPending && lastMatched.size > 0) setLastMatched(NO_MATCH);
-  const matchStale = matched.size === 0 && matchPending && lastMatched.size > 0;
-  const matchShown = matchStale ? lastMatched : matched;
-  const matchedKey = JSON.stringify([...matchShown, matchStale]);
-  useLayoutEffect(() => { onMatched?.(matchShown, matchStale); }, [matchedKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  useLayoutEffect(() => () => onMatched?.(null), []); // eslint-disable-line react-hooks/exhaustive-deps
-  // The card's record count is COUNT(DISTINCT key) of the main mart. For a plain, unfiltered read of its own columns the grid's total is COUNT(*) of the same rows.
-  // This assumes what the match badge assumes: the key is unique and never NULL in the warehouse.
-  // `asked` stays as it was while the band is paused, so the read itself is checked too, not only the grid's present grouping.
-  const plainNext = (q: typeof query) => !charts && !grouped && mainKey && !q.filter?.length && !q.aggregation?.length && !q.dateTrunc?.length && !q.uniqueCount?.length && !!q.column && q.column.every((c) => ownPlain.has(c));
+  // What each card counts: its own rules (the main card's filters, a joined card's slices). The page reads them, once per rule set, and shows them on the cards.
+  const byPath = useMemo(() => cardRules(schema, traverseFilters, martId), [schema, traverseFilters, martId]);
+  const rulesKey = JSON.stringify([...byPath]);
+  const rulesSent = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (rulesSent.current === rulesKey) return;
+    rulesSent.current = rulesKey;
+    onCardRules?.(byPath);
+  }, [rulesKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => () => onCardRules?.(null), []); // eslint-disable-line react-hooks/exhaustive-deps
+  // The card's count is COUNT(*) of the main mart. The grid's total is the same number when the read is plain (a Table, no group, no function, no Unique Count)
+  // and every rule of it is a main-card rule: a joined column or a slice never changes the main row count, a rule on a joined or calculated field would.
+  // No key is needed. `asked` stays as it was while the band is paused, so the read itself is checked too, not only the grid's present grouping.
+  const mainRules = byPath.get('')?.rules ?? [];
+  const answersMain = (q: typeof query) => !charts && !grouped && !q.aggregation?.length && !q.dateTrunc?.length && !q.uniqueCount?.length && !!q.column && mainOnly(schema, q.filter ?? []);
+  // The unfiltered count is what a Refresh can hold the card for: with main rules the card shows a filtered count, read again by the page.
+  const holdable = (q: typeof query) => answersMain(q) && mainRules.length === 0;
+  // The main rules of the read the total came from, which may be an older ask than the grid's present rules.
+  const askedRules = asked ? cardRules(schema, asked.filter ?? [], martId).get('')?.rules ?? [] : [];
+  const askedRulesKey = JSON.stringify(askedRules);
   // Only a total a read of this mount asked for: a cached result must not restart the card's 24 h or overwrite a newer count.
-  const plainTotal = !!asked && plainNext(asked) && counted.total !== null && counted.fresh && !counted.exact && counted.columns.every((c) => ownPlain.has(c));
+  const plainTotal = !!asked && answersMain(asked) && counted.total !== null && counted.fresh && !counted.exact;
   // A qualifying Refresh dims the card (no read) and waits for the grid's total, which sets it. Any other end of the wait counts the card once.
   const holding = useRef<number | null>(null);
   const recountRef = useRef(onRecount);
@@ -798,17 +769,19 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   const totalSent = useRef('');
   useLayoutEffect(() => {
     if (!plainTotal || counted.total === null) return;
-    const sent = `${version}:${counted.total}`;
+    const sent = `${version}:${counted.total}:${askedRulesKey}`;
     if (totalSent.current === sent) return;
     totalSent.current = sent;
-    holding.current = null;
-    onTotal?.(counted.total);
-  }, [plainTotal, counted.total, version]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (askedRules.length === 0) {
+      holding.current = null;
+      onTotal?.(counted.total);
+    } else onFilteredTotal?.(filteredKey(martId, askedRules, model.marts.get(martId)?.dataLastUpdatedAt ?? null), counted.total);
+  }, [plainTotal, counted.total, version, askedRulesKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     const h = holding.current;
     if (h === null) return;
     const over = !paused && asked === query && !reading && version === h;
-    if (error || !plainNext(query) || (over && !plainTotal)) { holding.current = null; recountRef.current?.(); }
+    if (error || !holdable(query) || (over && !plainTotal)) { holding.current = null; recountRef.current?.(); }
   });
   useLayoutEffect(() => () => { if (holding.current !== null) recountRef.current?.(); }, []);
   // A HAVING filter alone counts when the charts follow it, so their "No rows match the filters." is true.
@@ -842,7 +815,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
       <Toast onDismiss={() => setNote(null)} stamp={note} returnTo={() => scroller.current}>{note?.text}</Toast>
       <BandTools slot={slot}>
         <button type="button" disabled={!hasFilters && !hasSorts && !hasSlices} onClick={() => edit(() => { setAllFilters({}); setAllSlices({}); setOwn(null); })} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
-        <button type="button" onClick={() => { if (plainNext(query)) { holding.current = version + 1; onCardHold?.(); } else { holding.current = null; onRecount?.(); } onRefresh(); forgetGridRows(ctx, martId); forgetSeenRows(ctx, martId); forgetValues(ctx, martId); setJoinsFailed(false); setRefreshTick((n) => n + 1); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
+        <button type="button" onClick={() => { if (holdable(query)) { holding.current = version + 1; onCardHold?.(); } else { holding.current = null; onRecount?.(); } onForgetFiltered?.(); onRefresh(); forgetGridRows(ctx, martId); forgetSeenRows(ctx, martId); forgetValues(ctx, martId); setJoinsFailed(false); setRefreshTick((n) => n + 1); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
         {!blocked && <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} aggregation={aggNow} uniqueCount={ucNow} filters={Object.values(filters)} slices={Object.values(slices)} sorts={gridSorts} ownSorts={own ?? NO_SORTS} rows={blocked ? null : read} hasMore={hasMore} loading={reading && !blocked} failed={charts && failed} charts={charts} onOpenChange={onExportOpen} run={run} storage={martStorage} joinsFailed={joinsFailed && !joinsRead} sources={joinsRead ? sources : undefined} edges={model.edges} titles={martTitles} joinedMarts={joinedMarts} />}
       </BandTools>
       {loading && <div role="progressbar" aria-label="Loading rows" className="dm-busybar" />}
@@ -881,10 +854,10 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
             </tr>
           </thead>
           {/* ChartsBody renders its own <tbody>: nesting one in another makes the parser pull the headers out of the table. */}
-          {charts ? <ChartsBody pruneRef={pruneCards} blockedNote={blocked ? blockedText(blocked) : null} martId={martId} schema={schema} shown={shown} agg={aggNow} filter={chartFilter} havingNote={having.fallback} gate={having.gate} groups={groups} reportGroups={reportGroups} pathMarts={pathMarts} renderConfig={renderConfig} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} kept={keptUnique} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} />
+          {charts ? <ChartsBody pruneRef={pruneCards} blockedNote={blocked ? blockedText(blocked) : null} martId={martId} schema={schema} shown={shown} agg={aggNow} filter={chartFilter} havingNote={having.fallback} gate={having.gate} groups={groups} reportGroups={reportGroups} pathMarts={pathMarts} renderConfig={renderConfig} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} />
           : <tbody>
             {blocked ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground" role="alert">{blockedText(blocked)}</td></tr>
-              : error ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => { setRowsRetry((v) => v + 1); if (score.error) score.retry(); }} context={{ dataMartId: martId, options: asked, runId: errorRunId }} /></td></tr>
+              : error ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => { setRowsRetry((v) => v + 1); }} context={{ dataMartId: martId, options: asked, runId: errorRunId }} /></td></tr>
               : !rows ? <tr><Gutter /><td colSpan={outputs.length + 1}><Skeleton rows={8} /></td></tr>
               : rows.length === 0 ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground">{emptyText(hasFilters)}</td></tr>
               : (rows ?? []).map((row, ri) => <GridRow key={ri} row={row} ri={ri} columns={columnViews} marks={marksOf(ri)} acts={rowActs} clickable={clickable} />)}

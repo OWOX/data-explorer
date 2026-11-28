@@ -15,7 +15,7 @@ async function setup(saved: string[], post?: string[]) {
   const base = post ? { ...base0, owox: { ...base0.owox, getJson: (async (path: string, q?: Record<string, string>) => { const dto = await realGet<BlendableSchemaDto>(path, q); if (path.endsWith('/blendable-schema')) dto.blendedFields = dto.blendedFields?.map((f) => ({ ...f, postJoinAggregations: post })); return dto; }) as typeof base0.owox.getJson } } : base0;
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
-  const ctx = { ...base, owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id: string, o: TraverseOptions) => { queries.push(o); return real(id, o); } } } };
+  const ctx = { ...base, owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id: string, o: TraverseOptions) => { if (id === 'orders') queries.push(o); return real(id, o); } } } };
   await base.collections<{ columns: string[]; at: string }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: saved, at: 'then' });
   render(<StrictMode><AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices></StrictMode>);
   return queries;
@@ -206,7 +206,7 @@ test('a joined filter adopted from the store before the joined marts load is app
   const realGet = base.owox.getJson.bind(base.owox);
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
-  const ctx = { ...base, owox: { ...base.owox, getJson: (async (path: string, q?: Record<string, string>) => { if (path.endsWith('/blendable-schema')) await gate; return realGet(path, q); }) as typeof base.owox.getJson, dataMarts: { ...base.owox.dataMarts, traverseData: (id: string, o: TraverseOptions) => { queries.push(o); return real(id, o); } } } };
+  const ctx = { ...base, owox: { ...base.owox, getJson: (async (path: string, q?: Record<string, string>) => { if (path.endsWith('/blendable-schema')) await gate; return realGet(path, q); }) as typeof base.owox.getJson, dataMarts: { ...base.owox.dataMarts, traverseData: (id: string, o: TraverseOptions) => { if (id === 'orders') queries.push(o); return real(id, o); } } } };
   await base.collections<{ columns: string[]; at: string }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: ['id', 'status'], at: 'then' });
   let dispatch!: ReturnType<typeof useStore>[1];
   const Probe = () => { dispatch = useStore()[1]; return null; };
@@ -232,7 +232,7 @@ async function renderNarrowing(opts: { grid?: GridState; hidden?: string[] } = {
     const dto = await realGet<BlendableSchemaDto>(path, q);
     if (path.endsWith('/blendable-schema')) { state.reads += 1; dto.blendedFields = dto.blendedFields?.filter((f) => !(state.gone && f.name === 'customers__email') && !state.hidden.includes(f.name)).map((f) => (f.name === 'customers__email' ? { ...f, postJoinAggregations: state.post } : f)); }
     return dto;
-  }) as typeof base.owox.getJson, dataMarts: { ...base.owox.dataMarts, traverseData: (id: string, o: TraverseOptions) => { queries.push(o); return real(id, o); } } } };
+  }) as typeof base.owox.getJson, dataMarts: { ...base.owox.dataMarts, traverseData: (id: string, o: TraverseOptions) => { if (id === 'orders') queries.push(o); return real(id, o); } } } };
   await base.collections<{ columns: string[]; at: string }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: ['id', 'status', 'customers__email'], at: 'then' });
   const saved: { current: ReturnType<typeof useStore>[0] | null } = { current: null };
   const Seed = () => { const [st, dispatch] = useStore(); saved.current = st; useEffect(() => { if (opts.grid) dispatch({ type: 'saveGrid', martId: 'orders', grid: opts.grid }); }, [dispatch]); return null; };
@@ -315,7 +315,7 @@ test('a Refresh that takes a joined field away parks its filter, says so, and ap
   state.gone = false;
   await refresh();
   // The filter coming back ends a held Refresh without a plain total, so the card is counted once: that read is not the grid's.
-  await waitFor(() => expect(queries.filter((q) => q.column).at(-1)?.filter).toEqual([{ column: 'customers__email', operator: 'contains', value: 'a' }]));
+  await waitFor(() => expect(queries.filter((q) => q.column && q.limit !== 1).at(-1)?.filter).toEqual([{ column: 'customers__email', operator: 'contains', value: 'a' }]));
 });
 
 test('a Refresh that cannot read the schema keeps the grid and says so in the toast', async () => {
@@ -346,5 +346,5 @@ test('a Refresh that takes a joined field away pauses its slice, says so, and ap
   await waitFor(() => expect(queries.at(-1)?.filter ?? []).toEqual([]));
   state.gone = false;
   await refresh();
-  await waitFor(() => expect(queries.filter((q) => q.column).at(-1)?.filter).toEqual([{ column: 'customers__email', operator: 'contains', value: 'a', placement: 'pre-join' }]));
+  await waitFor(() => expect(queries.filter((q) => q.column && q.limit !== 1).at(-1)?.filter).toEqual([{ column: 'customers__email', operator: 'contains', value: 'a', placement: 'pre-join' }]));
 });

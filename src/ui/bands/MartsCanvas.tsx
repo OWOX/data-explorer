@@ -15,9 +15,10 @@ import { usePressDrag } from './usePressDrag';
 import { overOf, useGhostChain } from './useGhostChain';
 import type { ClickOptions } from './useCardClick';
 import { edgeOf, joinAlias, noteFields, relationshipNote } from './relationshipNote';
+import type { FilteredCount } from '../useFilteredCounts';
 import { litIds, revisionOf, useWires, type Wire } from './wires';
 
-export function MartsCanvas({ model, mainId, columns, emptyPaths, sources, counts, matched, matchedStale, dq, onOpenApp, onRetryCount, onRequestCount, click, onSelectedMart, own }: {
+export function MartsCanvas({ model, mainId, columns, emptyPaths, sources, counts, filtered, filteredRetry, dq, onOpenApp, onRetryCount, onRequestCount, click, onSelectedMart, own }: {
   model: Model;
   mainId: string | null;
   columns: string[];
@@ -27,10 +28,9 @@ export function MartsCanvas({ model, mainId, columns, emptyPaths, sources, count
   /** The Output Alias a joined mart's own settings give a path below it (`useOwnAliases`): lines under a joined mart read their names from it. */
   own: (martId: string, path: string) => string | undefined;
   counts: Map<string, CountState>;
-  /** How many records of the mart at each alias path the grid's filters and slices keep. */
-  matched?: ReadonlyMap<string, number>;
-  /** The matched numbers are the previous filters', shown dimmed. */
-  matchedStale?: boolean;
+  /** The count of the rules of the mart at each alias path, by alias path. */
+  filtered?: ReadonlyMap<string, FilteredCount>;
+  filteredRetry?: (path: string) => void;
   dq: Map<string, DqSummary>;
   onOpenApp: (id: string) => void;
   onRetryCount: (id: string) => void;
@@ -238,7 +238,7 @@ export function MartsCanvas({ model, mainId, columns, emptyPaths, sources, count
               mart={mart}
               contexts={contextsOf(model.contexts, mart.contextIds)}
               count={counts.get(mart.id) ?? { state: 'idle' }}
-              matched={matched?.get(node.path)} matchedStale={matchedStale}
+              filtered={filtered?.get(node.path)} filteredRetry={filteredRetry && (() => filteredRetry(node.path))}
               quality={dq.get(mart.id)}
               selected={node.path === ''}
               joined={node.path !== ''}

@@ -28,7 +28,7 @@ import { DragLines } from './DragLines';
 import { pathTitle } from '../../state/join-plan';
 import { useGridFocus } from './useGridFocus';
 import { useLatest } from '../useLatest';
-import type { Matched } from './matched';
+import type { FilteredCount } from '../useFilteredCounts';
 import type { JoinedSource } from '../../api/blendable';
 import { WireTipLayer } from './WireTipLayer';
 import { bandWires } from './bandWires';
@@ -61,7 +61,8 @@ export function CardBands({
   mainColumns,
   mainEmptyPaths,
   counts,
-  matched,
+  filtered,
+  filteredRetry,
   dq,
   foldedSources,
   foldedMarts,
@@ -84,8 +85,9 @@ export function CardBands({
   /** The alias paths of joined marts the main grid keeps with no column. */
   mainEmptyPaths?: string[];
   counts: Map<string, CountState>;
-  /** How many records of each mart of the report the grid's filters and slices keep; none while no filter applies. */
-  matched?: Matched | null;
+  /** The count of each card's own rules, by alias path, for the main mart that sent them (`useFilteredCounts`). */
+  filtered?: ReadonlyMap<string, FilteredCount>;
+  filteredRetry?: (path: string) => void;
   dq: Map<string, DqSummary>;
   foldedSources: boolean;
   foldedMarts: boolean;
@@ -120,8 +122,6 @@ export function CardBands({
   // The Graph's selected card, when it is a joined one (the Grid's own is `focus`, below).
   const [graphSelected, setGraphSelected] = useState<string | null>(null);
 
-  // The matched counts belong to the main mart that sent them; each card, in Grid and in Graph, takes its own path's number.
-  const matchedHere = matched && matched.martId === selection.martId ? matched.byPath : undefined;
   // The report tree: a joined mart is a node per alias path, in Graph and in Grid, and a source line reaches each of them.
   const mainFor = selection.martId;
   const canvasTree = useMemo(() => (mainFor ? buildJoinTree(mainFor, mainColumns, joinSources ?? [], mainEmptyPaths) : null), [mainFor, mainColumns, joinSources, mainEmptyPaths]);
@@ -357,7 +357,7 @@ export function CardBands({
             // Scrolling this box moves its cards without resizing anything, so tell the page wires to look again.
             onScroll={(e) => e.currentTarget.dispatchEvent(new Event('animationend', { bubbles: true }))}
           >
-            <MartsCanvas model={model} mainId={selection.martId} columns={mainColumns} emptyPaths={mainEmptyPaths} sources={joinSources} counts={counts} matched={matchedHere} matchedStale={matched?.stale} dq={dq} onOpenApp={onOpenApp} onRetryCount={onRetryCount} onRequestCount={onRequestCount} click={click} onSelectedMart={setGraphSelected} own={own} />
+            <MartsCanvas model={model} mainId={selection.martId} columns={mainColumns} emptyPaths={mainEmptyPaths} sources={joinSources} counts={counts} filtered={filtered} filteredRetry={filteredRetry} dq={dq} onOpenApp={onOpenApp} onRetryCount={onRetryCount} onRequestCount={onRequestCount} click={click} onSelectedMart={setGraphSelected} own={own} />
           </div>
         ) : <>
         {(visible.ids.length === 0 || noMatch) && <p className="dm-muted text-sm" style={{ gridColumn: '1 / -1' }}>No data marts match.</p>}
@@ -374,7 +374,7 @@ export function CardBands({
               <MartCard
                 key={isMain ? id : `${id}@${path}`}
                 {...realCard(mart, el)}
-                matched={matchedHere?.get(path)} matchedStale={matched?.stale}
+                filtered={filtered?.get(path)} filteredRetry={filteredRetry && (() => filteredRetry(path))}
                 selected={isMain}
                 joined={!isMain}
                 path={path || undefined}

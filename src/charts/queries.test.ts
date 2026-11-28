@@ -27,11 +27,8 @@ describe('queries', () => {
     expect(scorecardsQuery([{ ...main, metrics: [] }], [])).toEqual({ uniqueCount: [''] });
     expect(scorecardsQuery([{ ...main, metrics: [], hasPk: false }], [])).toBeNull();
   });
-  it("scorecards: the main mart with no column ('' kept) is a read of its own", () => {
-    expect(scorecardsQuery([{ ...main, metrics: [], hasPk: false }], [], null, [''])).toEqual({ uniqueCount: [''] });
-  });
   it('scorecards: a range date adds its column and its MIN and MAX', () => {
-    expect(scorecardsQuery([main], [], null, [], [date])).toEqual({
+    expect(scorecardsQuery([main], [], null, [date])).toEqual({
       column: ['amount', 'date'],
       aggregation: [{ column: 'amount', function: 'SUM' }, { column: 'date', function: 'MIN' }, { column: 'date', function: 'MAX' }],
       uniqueCount: [''],
@@ -39,26 +36,17 @@ describe('queries', () => {
   });
   it('scorecards: a range date carries a slice with no metric and needs no counter column', () => {
     const slice = [{ column: 'channel', operator: 'eq' as const, value: 'web', placement: 'pre-join' as const }];
-    const q = scorecardsQuery([{ ...main, metrics: [] }], slice, f('id', 'number'), [], [date]);
+    const q = scorecardsQuery([{ ...main, metrics: [] }], slice, f('id', 'number'), [date]);
     expect(q).toEqual({ column: ['date'], aggregation: [{ column: 'date', function: 'MIN' }, { column: 'date', function: 'MAX' }], uniqueCount: [''], filter: slice });
   });
   it('scorecards: no range date leaves the query as it was', () => {
-    expect(scorecardsQuery([main], [], null, [], [])).toEqual(scorecardsQuery([main], []));
-  });
-  it('scorecards: a mart kept with no column joins the unique count list and adds no metric; its path is listed once', () => {
-    expect(scorecardsQuery([main], [], null, ['stores'])).toEqual({ column: ['amount'], aggregation: [{ column: 'amount', function: 'SUM' }], uniqueCount: ['', 'stores'] });
-    expect(scorecardsQuery([main, cust], [], null, ['c.x', 'stores'])?.uniqueCount).toEqual(['', 'c.x', 'stores']);
-    // Kept paths alone are no query: with no metric and no key on a mart with a column, Charts shows its "no number field" hint and reads nothing.
-    expect(scorecardsQuery([{ ...main, metrics: [], hasPk: false }], [], null, ['stores'])).toBeNull();
-    expect(scorecardsQuery([{ ...main, hasPk: false }], [], null, ['stores'])?.uniqueCount).toEqual(['stores']);
-    expect(scorecardsQuery([{ ...main, metrics: [], hasPk: false }], [], null, [])).toBeNull();
+    expect(scorecardsQuery([main], [], null, [])).toEqual(scorecardsQuery([main], []));
   });
   it('scoreQuery is the scorecard query of the fields: one builder for the Table and the Charts', () => {
     const cf = { marts: [main, cust], dimensions: [], dates: [], counter: null };
-    expect(scoreQuery(cf, flt, ['stores'])).toEqual(scorecardsQuery([main, cust], flt, null, ['stores']));
-    // The rules and the kept path are in it, so two different asks are two different queries.
-    expect(scoreQuery(cf, flt, ['stores'])?.uniqueCount).toContain('stores');
-    expect(scoreQuery(cf, [], [])).not.toEqual(scoreQuery(cf, flt, ['stores']));
+    expect(scoreQuery(cf, flt)).toEqual(scorecardsQuery([main, cust], flt, null));
+    // The rules are in it, so two different asks are two different queries.
+    expect(scoreQuery(cf, [])).not.toEqual(scoreQuery(cf, flt));
   });
   it('a slice with no metric and no counter field has nowhere to go: the query would be sent without it', () => {
     const slice = { column: 'c__ltv', operator: 'eq' as const, value: 1, placement: 'pre-join' as const };
@@ -70,8 +58,8 @@ describe('queries', () => {
     expect(scoreRulesLost([slice], null)).toBe(false);
   });
   it('countsOf is the same ask with no metric: the counts a cached read of the same rules also holds', () => {
-    const o = scoreQuery({ marts: [main, cust], dimensions: [], dates: [], counter: null }, flt, ['stores'])!;
-    expect(countsOf(o)).toEqual({ uniqueCount: ['', 'c.x', 'stores'], filter: flt });
+    const o = scoreQuery({ marts: [main, cust], dimensions: [], dates: [], counter: null }, flt)!;
+    expect(countsOf(o)).toEqual({ uniqueCount: ['', 'c.x'], filter: flt });
   });
   it('keys match the aggregated row keys', () => {
     expect(metricKey(amount)).toBe('amount | SUM');
