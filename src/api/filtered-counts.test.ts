@@ -17,10 +17,10 @@ function setup(total?: number | null) {
 test('reads once with the rules as filter and serves the second call from the cache', async () => {
   const { ctx, traverseData } = setup();
   const key = filteredKey('a', rules, null);
-  expect(await countFiltered(ctx, key, 'a', schema, rules)).toBe(5);
+  expect(await countFiltered(ctx, key, 'a', schema, rules)).toEqual({ value: 5, unique: false });
   expect(traverseData).toHaveBeenCalledTimes(1);
   expect(traverseData).toHaveBeenCalledWith('a', expect.objectContaining({ filter: rules, limit: 1, includeTotalRowCount: true }));
-  expect(await countFiltered(ctx, key, 'a', schema, rules)).toBe(5);
+  expect(await countFiltered(ctx, key, 'a', schema, rules)).toEqual({ value: 5, unique: false });
   expect(traverseData).toHaveBeenCalledTimes(1);
 });
 
@@ -28,7 +28,7 @@ test('two concurrent calls with the same key send one read', async () => {
   const { ctx, traverseData } = setup();
   const key = filteredKey('a', rules, null);
   const [x, y] = await Promise.all([countFiltered(ctx, key, 'a', schema, rules), countFiltered(ctx, key, 'a', schema, rules)]);
-  expect([x, y]).toEqual([5, 5]);
+  expect([x, y]).toEqual([{ value: 5, unique: false }, { value: 5, unique: false }]);
   expect(traverseData).toHaveBeenCalledTimes(1);
 });
 
@@ -52,8 +52,8 @@ test('the key follows the update time, the rule order, and the day only for rela
 test('a remembered count is served without a read', async () => {
   const { ctx, traverseData } = setup();
   const key = filteredKey('a', rules, null);
-  rememberFiltered(ctx, key, 42);
-  expect(await countFiltered(ctx, key, 'a', schema, rules)).toBe(42);
+  rememberFiltered(ctx, key, 42, false);
+  expect(await countFiltered(ctx, key, 'a', schema, rules)).toEqual({ value: 42, unique: false });
   expect(traverseData).not.toHaveBeenCalled();
 });
 
@@ -61,22 +61,22 @@ test('forgetting a mart drops its entries and keeps the others', () => {
   const { ctx } = setup();
   const ka = filteredKey('a', rules, null);
   const kb = filteredKey('b', rules, null);
-  rememberFiltered(ctx, ka, 1);
-  rememberFiltered(ctx, kb, 2);
+  rememberFiltered(ctx, ka, 1, false);
+  rememberFiltered(ctx, kb, 2, true);
   forgetFiltered(ctx, 'a');
   expect(cachedFiltered(ctx, ka)).toBeUndefined();
-  expect(cachedFiltered(ctx, kb)).toBe(2);
+  expect(cachedFiltered(ctx, kb)).toEqual({ n: 2, unique: true });
 });
 
 test('the least recently used entry goes out first', () => {
   const { ctx } = setup();
   const keys = Array.from({ length: FILTERED_COUNT_LIMIT + 1 }, (_, i) => filteredKey(`m${i}`, rules, null));
-  keys.slice(0, FILTERED_COUNT_LIMIT).forEach((k, i) => rememberFiltered(ctx, k, i));
-  expect(cachedFiltered(ctx, keys[0]!)).toBe(0); // touched, so m1 is now the oldest
-  rememberFiltered(ctx, keys[FILTERED_COUNT_LIMIT]!, 99);
+  keys.slice(0, FILTERED_COUNT_LIMIT).forEach((k, i) => rememberFiltered(ctx, k, i, false));
+  expect(cachedFiltered(ctx, keys[0]!)).toEqual({ n: 0, unique: false }); // touched, so m1 is now the oldest
+  rememberFiltered(ctx, keys[FILTERED_COUNT_LIMIT]!, 99, false);
   expect(cachedFiltered(ctx, keys[1]!)).toBeUndefined();
-  expect(cachedFiltered(ctx, keys[0]!)).toBe(0);
-  expect(cachedFiltered(ctx, keys[FILTERED_COUNT_LIMIT]!)).toBe(99);
+  expect(cachedFiltered(ctx, keys[0]!)).toEqual({ n: 0, unique: false });
+  expect(cachedFiltered(ctx, keys[FILTERED_COUNT_LIMIT]!)).toEqual({ n: 99, unique: false });
 });
 
 test('a read under way when its mart is forgotten is neither cached nor joined', async () => {
@@ -93,5 +93,27 @@ test('a read under way when its mart is forgotten is neither cached nor joined',
   const second = countFiltered(ctx, key, 'a', schema, rules);
   await vi.waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
   release();
-  expect(await second).toBe(5);
+  expect(await second).toEqual({ value: 5, unique: false });
+});
+
+const keyed = [{ name: 'id', category: 'number', isPrimaryKey: true }] as unknown as Schema;
+
+test('a mart with a key is counted by unique records, with the rules as filter and no total row count', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 7 }]));
+  const ctx = stubCtx({ dataMarts: { list: vi.fn(), traverseData } });
+  const key = filteredKey('a', rules, null);
+  expect(await countFiltered(ctx, key, 'a', keyed, rules)).toEqual({ value: 7, unique: true });
+  expect(traverseData).toHaveBeenCalledTimes(1);
+  expect(traverseData).toHaveBeenCalledWith('a', { uniqueCount: [''], filter: rules });
+  expect(cachedFiltered(ctx, key)).toEqual({ n: 7, unique: true });
+  expect(await countFiltered(ctx, key, 'a', keyed, rules)).toEqual({ value: 7, unique: true });
+  expect(traverseData).toHaveBeenCalledTimes(1);
+});
+
+test('a unique count that is not a number is an error and is not cached', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': '7' }]));
+  const ctx = stubCtx({ dataMarts: { list: vi.fn(), traverseData } });
+  const key = filteredKey('a', rules, null);
+  await expect(countFiltered(ctx, key, 'a', keyed, rules)).rejects.toThrow();
+  expect(cachedFiltered(ctx, key)).toBeUndefined();
 });

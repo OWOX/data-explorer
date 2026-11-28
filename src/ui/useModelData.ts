@@ -5,6 +5,7 @@ import { COUNT_CONCURRENCY } from '../config';
 import type { DqSummary, Model } from '../model/types';
 import { forgetAllValues } from '../search/valueMatch';
 import { useServices, useStore } from '../state/store';
+import { hasPrimaryKey } from '../records/relationships';
 import type { CountState } from './bands/cards';
 import { errorMessage } from './ErrorBox';
 
@@ -57,7 +58,7 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
     return schemas.get(id)
       .then((s) => (recount ? counter.recount(id, s) : counter.count(id, s, lastModel.current?.marts.get(id)?.dataLastUpdatedAt ?? null)))
       .then(
-        (value) => { if (current()) setCounts((c) => new Map(c).set(id, { state: 'ok', value })); },
+        ({ value, unique }) => { if (current()) setCounts((c) => new Map(c).set(id, { state: 'ok', value, unique })); },
         (e) => { if (current()) setCounts((c) => new Map(c).set(id, { state: 'error', message: errorMessage(e) })); },
       );
   }, [schemas, counter]);
@@ -77,7 +78,7 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
             const was = next.get(id);
             if (was?.state === 'queued') next.delete(id);
             // A recount that will not run: its old count is the shown one again, no longer dimmed.
-            else if (was?.state === 'ok' && was.stale) next.set(id, { state: 'ok', value: was.value });
+            else if (was?.state === 'ok' && was.stale) next.set(id, { state: 'ok', value: was.value, unique: was.unique });
           });
           return next;
         });
@@ -120,9 +121,11 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
     seqs.current.latest.set(id, ++seqs.current.next);
     queue.current = queue.current.filter((q) => q.id !== id);
     asked.current.set(id, generation.current);
-    setCounts((c) => new Map(c).set(id, { state: 'ok', value }));
-    void counter.store(id, value);
-  }, [counter]);
+    // The grid's total counts the main mart's rows, taken as its unique records when it has a key (the keys are unique), so the label matches the card's other reads.
+    const unique = hasPrimaryKey(schemas.peek(id) ?? []);
+    setCounts((c) => new Map(c).set(id, { state: 'ok', value, unique }));
+    void counter.store(id, value, unique);
+  }, [counter, schemas]);
 
   // The card keeps its count, dimmed, while the grid's Refresh reads the total that will replace it. No read.
   const hold = useCallback((id: string) => {

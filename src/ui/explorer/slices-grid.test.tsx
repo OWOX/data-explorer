@@ -167,7 +167,7 @@ test('the charts get the passing group keys as an in rule, and the scorecard tot
   expect(charted.every((q) => !q.filter?.some((f) => f.function))).toBe(true);
   expect(t.queries.filter((q) => q.limit === 501)).toHaveLength(1);
   expect(charted.length).toBeGreaterThan(0);
-  const everyChart = t.queries.filter((q) => q.limit !== 501 && !(q.limit === 1 && q.includeTotalRowCount && !q.filter));
+  const everyChart = t.queries.filter((q) => q.limit !== 501 && !((q.limit === 1 && q.includeTotalRowCount && !q.filter) || (q.uniqueCount?.length === 1 && q.uniqueCount[0] === '' && Object.keys(q).length === 1)));
   expect(everyChart.every((q) => q.filter?.some((f) => f.column === 'status' && f.operator === 'in')) ).toBe(true);
   expect(charted.every((q) => q.filter?.some((f) => f.column === 'status' && f.operator === 'in' && JSON.stringify([...(f.value as string[])].sort()) === JSON.stringify([...exp.keys].sort())))).toBe(true);
   expect(within(data()).queryByText(/Charts can.t apply/)).toBeNull();

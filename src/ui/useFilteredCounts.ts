@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { cachedFiltered, countFiltered, filteredKey, forgetFiltered, rememberFiltered } from '../api/filtered-counts';
+import { cachedFiltered, countFiltered, filteredKey, forgetFiltered, martOfKey, rememberFiltered } from '../api/filtered-counts';
 import { COUNT_CONCURRENCY } from '../config';
+import { hasPrimaryKey } from '../records/relationships';
 import type { GridRules } from '../filters/card-rules';
 import type { Model } from '../model/types';
 import type { TraverseFilter } from '../sdk/types';
@@ -11,7 +12,7 @@ import { errorMessage } from './ErrorBox';
 type Wanted = { key: string; martId: string; rules: TraverseFilter[]; partial: boolean; /** The grid's own read will answer this path: no read here. */ awaitGrid: boolean };
 const localDay = (d: Date): string => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 /** What the reads last said about a path: for `key`, plus the last value it showed, kept dimmed while a new key is read. */
-type Status = { key: string; state: CountState; last: number | null | undefined };
+type Status = { key: string; state: CountState; last: number | null | undefined; lastUnique?: boolean };
 
 export type FilteredCount = { /** Absent for a card with no rule that could be counted. */ state?: CountState; partial: boolean };
 
@@ -58,13 +59,14 @@ export function useFilteredCounts(model: Model | null, byPath: ReadonlyMap<strin
       const put = (state: CountState) => { if (current()) setStatus((s) => {
         const was = s.get(job.path);
         const last = state.state === 'ok' ? state.value : was?.state.state === 'ok' ? was.state.value : was?.last;
-        return new Map(s).set(job.path, { key: job.key, state, last });
+        const lastUnique = state.state === 'ok' ? state.unique : was?.state.state === 'ok' ? was.state.unique : was?.lastUnique;
+        return new Map(s).set(job.path, { key: job.key, state, last, lastUnique });
       }); };
       active.current++;
       put({ state: 'loading' });
       schemas.get(job.martId)
         .then((schema) => countFiltered(ctx, job.key, job.martId, schema, job.rules))
-        .then((value) => put({ state: 'ok', value }), (e) => put({ state: 'error', message: errorMessage(e) }))
+        .then(({ value, unique }) => put({ state: 'ok', value, unique }), (e) => put({ state: 'error', message: errorMessage(e) }))
         .finally(() => { active.current--; run(); });
     }
   }, [ctx, schemas]);
@@ -108,9 +110,10 @@ export function useFilteredCounts(model: Model | null, byPath: ReadonlyMap<strin
   }, [ctx]);
 
   const seed = useCallback((key: string, n: number) => {
-    rememberFiltered(ctx, key, n);
+    // The grid's total counts the main mart's rows, taken as its unique records when it has a key (the keys are unique), so the label matches the card's other reads.
+    rememberFiltered(ctx, key, n, hasPrimaryKey(schemas.peek(martOfKey(key)) ?? []));
     setTick((t) => t + 1);
-  }, [ctx]);
+  }, [ctx, schemas]);
 
   const filtered = useMemo(() => {
     void tick; // a seed changes the cache, not the inputs
@@ -120,9 +123,9 @@ export function useFilteredCounts(model: Model | null, byPath: ReadonlyMap<strin
       const hit = cachedFiltered(ctx, w.key);
       const was = status.get(path);
       let state: CountState;
-      if (hit !== undefined) state = { state: 'ok', value: hit };
+      if (hit !== undefined) state = { state: 'ok', value: hit.n, unique: hit.unique };
       else if (was?.key === w.key && !((was.state.state === 'loading' || was.state.state === 'queued') && was.last !== undefined)) state = was.state;
-      else if (was?.last !== undefined) state = { state: 'ok', value: was.last, stale: true };
+      else if (was?.last !== undefined) state = { state: 'ok', value: was.last, stale: true, unique: was.lastUnique };
       else state = { state: 'queued' };
       out.set(path, { state, partial: w.partial });
     }

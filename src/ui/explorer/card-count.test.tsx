@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { act, render, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Dispatch } from 'react';
 import type { Ctx, TraverseOptions } from '../../sdk/types';
@@ -8,10 +8,14 @@ import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider, useStore, type Action, type GridState } from '../../state/store';
 import { App } from '../App';
 
-// Every traverseData call is a billed warehouse run. The card's own count is one column, `limit: 1` and `includeTotalRowCount`, and nothing else.
-const isCardCount = (q: TraverseOptions) => Object.keys(q).length === 3 && q.column?.length === 1 && q.limit === 1 && q.includeTotalRowCount === true;
+// Every traverseData call is a billed warehouse run. The card's own count of a mart with no key is one column, `limit: 1` and `includeTotalRowCount`, and nothing else.
+// A mart with a key is counted by `uniqueCount: ['']` alone (and the card's filter), with no column and no total.
+const isCardCount = (q: TraverseOptions) =>
+  (Object.keys(q).length === 3 && q.column?.length === 1 && q.limit === 1 && q.includeTotalRowCount === true) ||
+  (q.uniqueCount?.length === 1 && q.uniqueCount[0] === '' && Object.keys(q).every((k) => k === 'uniqueCount' || k === 'filter'));
 
-function setup(grid: GridState, opts: { noKey?: boolean; calc?: boolean; hiddenKey?: boolean } = {}) {
+type SetupOptions = { noKey?: boolean; calc?: boolean; hiddenKey?: boolean };
+function setup(grid: GridState, opts: SetupOptions = {}) {
   const fixtures = structuredClone(demoFixtures());
   if (opts.hiddenKey) fixtures.marts.find((m) => m.id === 'orders')!.fields.find((f) => f.name === 'id')!.isHiddenForReporting = true;
   if (opts.noKey) for (const f of fixtures.marts.find((m) => m.id === 'orders')!.fields) f.isPrimaryKey = false;
@@ -63,19 +67,19 @@ test('a plain unfiltered grid of a mart with a key gives its total to the card',
   const t = setup(plain);
   await t.mount();
   await waitFor(rowsShown);
-  await waitFor(() => expect(shown()).toMatch(/123 rows/));
+  await waitFor(() => expect(shown()).toMatch(/123 unique records/));
 });
 
 test('a key hidden for reporting, which the grid reads to open rows by, still gives the total to the card, and Refresh adds no count read', async () => {
   const t = setup({ ...plain, columns: ['status', 'amount', 'created_at'] }, { hiddenKey: true });
   await t.mount();
-  await waitFor(() => expect(shown()).toMatch(/123 rows/));
+  await waitFor(() => expect(shown()).toMatch(/123 unique records/));
   expect(t.queries.some((q) => q.column?.includes('id'))).toBe(true);
   await calm();
   const before = t.countReads().length;
   t.state.total = 456;
   await refresh();
-  await waitFor(() => expect(shown()).toMatch(/456 rows/));
+  await waitFor(() => expect(shown()).toMatch(/456 unique records/));
   await calm();
   expect(t.countReads()).toHaveLength(before);
 });
@@ -83,7 +87,7 @@ test('a key hidden for reporting, which the grid reads to open rows by, still gi
 test('with a filter on a main field the grid total is the card\'s filtered count, and no filtered read is sent', async () => {
   const t = setup(filtered);
   await t.mount();
-  await waitFor(() => expect(shown()).toMatch(/123 rows/));
+  await waitFor(() => expect(shown()).toMatch(/123 unique records/));
   await calm();
   expect(t.queries.filter((q) => !!q.filter && q.limit === 1)).toEqual([]);
 });
@@ -96,28 +100,42 @@ test.each([
   await t.mount();
   await waitFor(rowsShown);
   await calm();
-  expect(shown()).not.toMatch(/123 rows/);
+  expect(shown()).not.toMatch(/123 unique records/);
 });
 
 test.each([
   ['a joined column', { ...plain, columns: [...plain.columns, 'products__price'] }, {}],
   ['a slice', { ...plain, slices: { customers__country_code: { field: 'customers__country_code', op: 'eq', value: 'PL' } } } as GridState, {}],
   ['no primary key', plain, { noKey: true }],
-])('with %s the card still takes the grid total (COUNT(*) needs no key, and joined marts never change the main row count)', async (_n, grid, opts) => {
+])('with %s the card still takes the grid total (COUNT(*) needs no key, and joined marts never change the main row count)', async (_n, grid, opts: SetupOptions) => {
   const t = setup(grid, opts);
   await t.mount();
-  await waitFor(() => expect(shown()).toMatch(/123 rows/));
+  await waitFor(() => expect(shown()).toMatch(opts.noKey ? /123 rows/ : /123 unique records/));
+});
+
+test('the card of a mart with a key is read by Unique Count alone, and one with no key by a one-row read with its total', async () => {
+  const keyed = setup({ ...plain, columns: [] }, {});
+  await keyed.mount();
+  await waitFor(() => expect(shown()).toMatch(/unique records/));
+  expect(keyed.countReads().length).toBeGreaterThan(0);
+  for (const q of keyed.countReads()) expect(q).toEqual({ uniqueCount: [''] });
+  cleanup();
+  const keyless = setup({ ...plain, columns: [] }, { noKey: true });
+  await keyless.mount();
+  await waitFor(() => expect(shown()).toMatch(/\d rows/));
+  expect(keyless.countReads().length).toBeGreaterThan(0);
+  for (const q of keyless.countReads()) expect(q).toMatchObject({ limit: 1, includeTotalRowCount: true });
 });
 
 test('Refresh on a plain grid adds no count read, and the card shows the new total', async () => {
   const t = setup(plain);
   await t.mount();
-  await waitFor(() => expect(shown()).toMatch(/123 rows/));
+  await waitFor(() => expect(shown()).toMatch(/123 unique records/));
   await calm();
   const before = t.countReads().length;
   t.state.total = 456;
   await refresh();
-  await waitFor(() => expect(shown()).toMatch(/456 rows/));
+  await waitFor(() => expect(shown()).toMatch(/456 unique records/));
   await calm();
   expect(t.countReads()).toHaveLength(before);
 });
@@ -149,22 +167,22 @@ const dimmed = () => card()?.querySelector('.dm-badge.dm-stale') !== null && car
 test('Refresh on a plain grid dims the card while the grid reads, then shows the new total', async () => {
   const t = setup(plain);
   await t.mount();
-  await waitFor(() => expect(shown()).toMatch(/123 rows/));
+  await waitFor(() => expect(shown()).toMatch(/123 unique records/));
   await calm();
   t.state.total = 456;
   const release = t.hold();
   await refresh();
   await waitFor(() => expect(dimmed()).toBe(true));
-  expect(shown()).toMatch(/123 rows/);
+  expect(shown()).toMatch(/123 unique records/);
   release();
-  await waitFor(() => expect(shown()).toMatch(/456 rows/));
+  await waitFor(() => expect(shown()).toMatch(/456 unique records/));
   expect(dimmed()).toBe(false);
 });
 
 test('a plain Refresh whose read fails counts the card once', async () => {
   const t = setup(plain);
   await t.mount();
-  await waitFor(() => expect(shown()).toMatch(/123 rows/));
+  await waitFor(() => expect(shown()).toMatch(/123 unique records/));
   await calm();
   const before = t.countReads().length;
   t.state.fail = true;
@@ -176,7 +194,7 @@ test('a plain Refresh whose read fails counts the card once', async () => {
 test('a filter added while a plain Refresh reads counts the card once', async () => {
   const t = setup(plain);
   await t.mount();
-  await waitFor(() => expect(shown()).toMatch(/123 rows/));
+  await waitFor(() => expect(shown()).toMatch(/123 unique records/));
   await calm();
   const before = t.countReads().length;
   const release = t.hold();
@@ -196,7 +214,7 @@ test('a grouped read left in a folded band is not given to the card when the gri
   await userEvent.click(within(document.body).getByRole('button', { name: 'Hide Data' }));
   await t.apply(plain);
   await calm();
-  expect(shown()).not.toMatch(/123 rows/);
+  expect(shown()).not.toMatch(/123 unique records/);
 });
 
 test.each([
@@ -206,5 +224,5 @@ test.each([
   await t.mount();
   await waitFor(rowsShown);
   await calm();
-  expect(shown()).not.toMatch(/123 rows/);
+  expect(shown()).not.toMatch(/123 unique records/);
 });

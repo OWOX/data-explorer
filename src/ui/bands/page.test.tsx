@@ -96,7 +96,9 @@ const overrideTraverse = (wrap: (real: Mock['owox']['dataMarts']['traverseData']
 });
 
 /** A card's row count: one column, one row, with the total row count. The grid's own reads and a record's never ask for it. */
-const isCardCount = (o: { limit?: number; includeTotalRowCount?: boolean } | undefined) => o?.limit === 1 && o.includeTotalRowCount === true;
+// A card count: a mart with no key is read by one row and its total, a mart with a key by `uniqueCount: ['']` alone (and the card's filter).
+const isCardCount = (o: { column?: string[]; limit?: number; includeTotalRowCount?: boolean; uniqueCount?: string[]; filter?: unknown[] } | undefined) =>
+  (o?.limit === 1 && o.includeTotalRowCount === true) || (!!o && o.uniqueCount?.length === 1 && o.uniqueCount[0] === '' && Object.keys(o).every((k) => k === 'uniqueCount' || k === 'filter'));
 
 async function spyOnTraverse() {
   const calls: { id: string; o: Parameters<Mock['owox']['dataMarts']['traverseData']>[1] }[] = [];
@@ -1441,7 +1443,7 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     const f = demoFixtures();
     const stores = f.marts.find((m) => m.id === 'stores')!;
     stores.fields = stores.fields.map((x) => (x.name === 'id' ? { ...x, isHiddenForReporting: true } : x));
-    const queries: { id: string; o: { column?: string[]; limit?: number; includeTotalRowCount?: boolean; sort?: { column: string }[]; filter?: { column: string }[] } }[] = [];
+    const queries: { id: string; o: { column?: string[]; limit?: number; includeTotalRowCount?: boolean; uniqueCount?: string[]; sort?: { column: string }[]; filter?: { column: string }[] } }[] = [];
     await mountWith(overrideTraverse((real) => (id, o) => { queries.push({ id, o }); return real(id, o); }), f);
     await within(data()).findByRole('table');
     await search('stores');
@@ -1466,8 +1468,8 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     await userEvent.click(within(row()).getByRole('button', { name: 'Refresh' }));
     await waitFor(() => expect(queries.some((q) => q.id === 'stores' && q.o.filter?.some((x) => x.column === 'id' && typeof (x as { value?: unknown }).value === 'number'))).toBe(true));
     await waitFor(() => expect(within(row()).getAllByText(value).length).toBeGreaterThan(0));
-    // The mart is still counted, by one column and its total row count, and no card says it cannot count.
-    expect(queries.some((q) => q.id === 'stores' && isCardCount(q.o) && q.o.column?.length === 1)).toBe(true);
+    // The mart is still counted, by its Unique Count alone (the key is hidden but still a key), and no card says it cannot count.
+    expect(queries.some((q) => q.id === 'stores' && q.o.uniqueCount?.[0] === '' && isCardCount(q.o))).toBe(true);
     expect(screen.queryByText(/Can't count rows/)).toBeNull();
   });
 

@@ -163,7 +163,7 @@ describe('field actions from the Fields list', () => {
   test('every chart query carries the filters of a hidden field, as the table does', async () => {
     const t = setup(g({ columns: ['status', 'net_revenue'], filters: { created_at: { field: 'created_at', op: 'after', value: '2000-01-01' } }, view: 'charts' }));
     await waitFor(() => expect(data().querySelector('[data-card="net_revenue"] [data-card-value]')).not.toBeNull(), { timeout: 4000 });
-    const reads = t.queries.filter((q) => q.limit !== 501 && !(q.limit === 1 && q.includeTotalRowCount && !q.filter));
+    const reads = t.queries.filter((q) => q.limit !== 501 && !((q.limit === 1 && q.includeTotalRowCount && !q.filter) || (q.uniqueCount?.length === 1 && q.uniqueCount[0] === '' && Object.keys(q).length === 1)));
     expect(reads.length).toBeGreaterThan(0);
     expect(reads.every((q) => q.filter?.some((f) => f.column === 'created_at'))).toBe(true);
   });

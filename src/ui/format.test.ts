@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { compactNumber, count, displayText, formatNumber, formatTemporal, groupsLabel, num, rowCountLabel, rowsLabel, relativeTime, resetFormats } from './format';
+import { compactNumber, count, displayText, formatNumber, formatTemporal, groupsLabel, num, rowCountLabel, rowsLabel, uniqueRecordsLabel, relativeTime, resetFormats } from './format';
 
 test.each([[0, '0'], [999, '999'], [1200, '1.2K'], [12400, '12.4K'], [3_400_000, '3.4M'], [2_000_000_000, '2B']])('%d → %s', (n, s) => {
   expect(compactNumber(n)).toBe(s);
@@ -110,5 +110,13 @@ describe('formatNumber', () => {
     expect(displayText('1223', 'NUMERIC')).toBe('1,223');
     expect(displayText(1223, 'STRING')).toBe('1223');
     expect(displayText(1223)).toBe('1223');
+  });
+});
+
+describe('uniqueRecordsLabel', () => {
+  test('is singular for one', () => {
+    expect(uniqueRecordsLabel('1')).toBe('1 unique record');
+    expect(uniqueRecordsLabel('2')).toBe('2 unique records');
+    expect(uniqueRecordsLabel('11.1K')).toBe('11.1K unique records');
   });
 });

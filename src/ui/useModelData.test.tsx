@@ -15,7 +15,7 @@ const modelOf = (ids: string[]): Model => ({ marts: new Map(ids.map((id) => [id,
 function setup(traverseData: () => Promise<ReturnType<typeof traversalOf>>) {
   const ctx = stubCtx({
     dataMarts: { list: vi.fn(), traverseData },
-    getJson: async () => ({ id: 'x', schema: { fields: [{ name: 'id', type: 'INT64', isPrimaryKey: true }] } }),
+    getJson: async () => ({ id: 'x', schema: { fields: [{ name: 'id', type: 'INT64', isPrimaryKey: false }] } }),
     postJson: async () => ({ items: [] }),
   });
   const wrapper = ({ children }: { children: ReactNode }) => <AppServices ctx={ctx}><StoreProvider>{children}</StoreProvider></AppServices>;
@@ -40,7 +40,7 @@ test('a card is counted only once it asks, 4 at a time', async () => {
 
   act(() => ids.forEach((id) => result.current.request(id)));
   act(() => result.current.request('m3')); // a second ask for the same card is ignored
-  await waitFor(() => expect(result.current.counts.get('m19')).toEqual({ state: 'ok', value: 7 }));
+  await waitFor(() => expect(result.current.counts.get('m19')).toEqual({ state: 'ok', value: 7, unique: false }));
   expect(traverseData).toHaveBeenCalledTimes(20);
   expect(peak).toBeLessThanOrEqual(4);
 });
@@ -52,14 +52,14 @@ test('a refresh that fails leaves counts and data quality as they were, and show
   const wrapper = setup(traverseData);
   const { result, rerender } = renderHook(({ version }) => useCardStatus(model, ids, version), { wrapper, initialProps: { version: 0 } });
   act(() => ids.forEach((id) => result.current.request(id)));
-  await waitFor(() => expect(result.current.counts.get('b')).toEqual({ state: 'ok', value: 7 }));
+  await waitFor(() => expect(result.current.counts.get('b')).toEqual({ state: 'ok', value: 7, unique: false }));
   const dqBefore = result.current.dq;
 
   // The version moves but the reload fails: the model object never changes.
   rerender({ version: 1 });
   await new Promise((r) => setTimeout(r, 20));
-  expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 7 });
-  expect(result.current.counts.get('b')).toEqual({ state: 'ok', value: 7 });
+  expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 7, unique: false });
+  expect(result.current.counts.get('b')).toEqual({ state: 'ok', value: 7, unique: false });
   expect(result.current.dq).toBe(dqBefore);
   expect(traverseData).toHaveBeenCalledTimes(2);
 });
@@ -75,14 +75,14 @@ test('a successful refresh recounts what was shown, keeping the old number until
   const wrapper = setup(traverseData);
   const { result, rerender } = renderHook(({ model, version }) => useCardStatus(model, ids, version), { wrapper, initialProps: { model: modelOf(ids), version: 0 } });
   act(() => result.current.request('a'));
-  await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 7 }));
+  await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 7, unique: false }));
 
   value = 9;
   rerender({ model: modelOf(ids), version: 1 });
   // The old count stays, flagged stale so the card dims it; it is not replaced by a spinner.
-  await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 7, stale: true }));
+  await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 7, stale: true, unique: false }));
   act(() => release());
-  await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 9 }));
+  await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 9, unique: false }));
 });
 
 test('after a failed reload, a changed visible set neither recounts nor reloads; a later new model refreshes once', async () => {
@@ -91,12 +91,12 @@ test('after a failed reload, a changed visible set neither recounts nor reloads;
   const traverseData = vi.fn(async () => traversalOf([{ day: 'x' }], 2, 7));
   const { result, rerender } = renderHook(({ m, v, vis }) => useCardStatus(m, vis, v), { wrapper: setup(traverseData), initialProps: { m: model, v: 0, vis: ids } });
   act(() => ids.forEach((id) => result.current.request(id)));
-  await waitFor(() => expect(result.current.counts.get('b')).toEqual({ state: 'ok', value: 7 }));
+  await waitFor(() => expect(result.current.counts.get('b')).toEqual({ state: 'ok', value: 7, unique: false }));
 
   rerender({ m: model, v: 1, vis: ['a'] }); // the reload failed: same model, new visible set
   await new Promise((r) => setTimeout(r, 20));
   expect(traverseData).toHaveBeenCalledTimes(2);
-  expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 7 });
+  expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 7, unique: false });
 
   rerender({ m: modelOf(ids), v: 1, vis: ['a', 'b'] }); // Retry succeeds
   await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(4));
@@ -109,18 +109,18 @@ test('a card first seen after a refresh still goes through the count cache', asy
   const traverseData = vi.fn(async () => traversalOf([{ day: 'x' }], 2, 7));
   const base = stubCtx({
     dataMarts: { list: vi.fn(), traverseData },
-    getJson: async () => ({ id: 'x', schema: { fields: [{ name: 'id', type: 'INT64', isPrimaryKey: true }] } }),
+    getJson: async () => ({ id: 'x', schema: { fields: [{ name: 'id', type: 'INT64', isPrimaryKey: false }] } }),
     postJson: async () => ({ items: [] }),
   });
-  const cached = { ...base, collections: () => ({ get: async () => ({ document: { dataMartId: 'x', count: 5, at: new Date().toISOString() } }), put: async () => undefined }) } as unknown as typeof base;
+  const cached = { ...base, collections: () => ({ get: async () => ({ document: { dataMartId: 'x', count: 5, at: new Date().toISOString(), unique: false } }), put: async () => undefined }) } as unknown as typeof base;
   const wrapper = ({ children }: { children: ReactNode }) => <AppServices ctx={cached}><StoreProvider>{children}</StoreProvider></AppServices>;
   const { result, rerender } = renderHook(({ m, v }) => useCardStatus(m, ids, v), { wrapper, initialProps: { m: modelOf(ids), v: 0 } });
   act(() => result.current.request('a'));
-  await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 5 }));
+  await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 5, unique: false }));
   rerender({ m: modelOf(ids), v: 1 });
   await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(1)); // a is recounted
   act(() => result.current.request('b')); // first seen after the refresh: the cache answers
-  await waitFor(() => expect(result.current.counts.get('b')).toEqual({ state: 'ok', value: 5 }));
+  await waitFor(() => expect(result.current.counts.get('b')).toEqual({ state: 'ok', value: 5, unique: false }));
   expect(traverseData).toHaveBeenCalledTimes(1);
 });
 
@@ -145,7 +145,7 @@ test('a refresh while counts are queued or in flight counts each card once per g
   const drain = async () => { for (let i = 0; i < 40; i++) { act(() => releases.splice(0).forEach((r) => r())); await new Promise((r) => setTimeout(r, 5)); } };
   await drain();
   await waitFor(() => expect(ids.every((id) => result.current.counts.get(id)?.state === 'ok')).toBe(true));
-  expect(ids.map((id) => result.current.counts.get(id))).toEqual(ids.map(() => ({ state: 'ok', value: 2 })));
+  expect(ids.map((id) => result.current.counts.get(id))).toEqual(ids.map(() => ({ state: 'ok', value: 2, unique: false })));
   expect(Math.max(...perId.values())).toBeLessThanOrEqual(2);
   expect(traverseData).toHaveBeenCalledTimes(12); // 8 first-generation (4 in flight + 4 queued, upgraded) + 4 re-asked in flight
 });
@@ -193,7 +193,7 @@ test('a bare node of the join tree is counted once it is in the ids, and stays i
   const ids = statusIds(['main', 'c'], tree);
   const { result } = renderHook(() => useCardStatus(model, ids, 0), { wrapper });
   act(() => result.current.request('a'));
-  await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 5 }));
+  await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 5, unique: false }));
 });
 
 test('a refresh dims every recounted card at once, also the ones still waiting in the queue behind the first 4', async () => {
@@ -202,15 +202,15 @@ test('a refresh dims every recounted card at once, also the ones still waiting i
   const traverseData = vi.fn(async () => { await gate; return traversalOf([{ day: 'x' }], 2, 7); });
   const { result, rerender } = renderHook(({ model, version }) => useCardStatus(model, ids, version), { wrapper: setup(traverseData), initialProps: { model: modelOf(ids), version: 0 } });
   act(() => ids.forEach((id) => result.current.request(id)));
-  await waitFor(() => expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7 }));
+  await waitFor(() => expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7, unique: false }));
   let open!: () => void;
   gate = new Promise<void>((r) => { open = r; });
   rerender({ model: modelOf(ids), version: 1 });
   await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(8 + 4));
-  for (const id of ids) expect(result.current.counts.get(id)).toEqual({ state: 'ok', value: 7, stale: true });
+  for (const id of ids) expect(result.current.counts.get(id)).toEqual({ state: 'ok', value: 7, stale: true, unique: false });
   gate = null;
   act(() => open());
-  await waitFor(() => expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7 }));
+  await waitFor(() => expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7, unique: false }));
   expect(traverseData).toHaveBeenCalledTimes(16);
 });
 
@@ -220,17 +220,17 @@ test('a recount dropped from the queue because its card left view is no longer d
   const traverseData = vi.fn(async () => { await gate; return traversalOf([{ day: 'x' }], 2, 7); });
   const { result, rerender } = renderHook(({ model, version, vis }) => useCardStatus(model, vis, version), { wrapper: setup(traverseData), initialProps: { model: modelOf(ids), version: 0, vis: ids } });
   act(() => ids.forEach((id) => result.current.request(id)));
-  await waitFor(() => expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7 }));
+  await waitFor(() => expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7, unique: false }));
   gate = new Promise<void>(() => {});
   rerender({ model: modelOf(ids), version: 1, vis: ids });
   await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(8 + 4));
-  expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7, stale: true });
+  expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7, stale: true, unique: false });
   rerender({ model: modelOf(ids), version: 1, vis: ids.slice(0, 4) });
   // Brought back into view without asking again: its old count shows, not dimmed.
   rerender({ model: modelOf(ids), version: 1, vis: ids });
-  await waitFor(() => expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7 }));
+  await waitFor(() => expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7, unique: false }));
   // The ones still counting stay dimmed.
-  expect(result.current.counts.get('m0')).toEqual({ state: 'ok', value: 7, stale: true });
+  expect(result.current.counts.get('m0')).toEqual({ state: 'ok', value: 7, stale: true, unique: false });
   expect(traverseData).toHaveBeenCalledTimes(12);
 });
 
@@ -243,11 +243,11 @@ test('an offered count replaces a queued read: it never runs, and the card shows
   act(() => ids.forEach((id) => result.current.request(id))); // 4 in flight, m4 and m5 queued
   await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(4));
   act(() => result.current.offer('m5', 99));
-  expect(result.current.counts.get('m5')).toEqual({ state: 'ok', value: 99 });
+  expect(result.current.counts.get('m5')).toEqual({ state: 'ok', value: 99, unique: false });
   for (let i = 0; i < 20; i++) { act(() => releases.splice(0).forEach((r) => r())); await new Promise((r) => setTimeout(r, 5)); }
-  await waitFor(() => expect(result.current.counts.get('m4')).toEqual({ state: 'ok', value: 7 }));
+  await waitFor(() => expect(result.current.counts.get('m4')).toEqual({ state: 'ok', value: 7, unique: false }));
   expect(called).not.toContain('m5');
-  expect(result.current.counts.get('m5')).toEqual({ state: 'ok', value: 99 });
+  expect(result.current.counts.get('m5')).toEqual({ state: 'ok', value: 99, unique: false });
 });
 
 test('an offered count is not overwritten by a read already running, and a later request reads nothing', async () => {
@@ -259,7 +259,7 @@ test('an offered count is not overwritten by a read already running, and a later
   act(() => result.current.offer('a', 99));
   act(() => releases.splice(0).forEach((r) => r()));
   await new Promise((r) => setTimeout(r, 30));
-  expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 99 });
+  expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 99, unique: false });
   act(() => result.current.request('a'));
   await new Promise((r) => setTimeout(r, 30));
   expect(traverseData).toHaveBeenCalledTimes(1);
@@ -272,13 +272,13 @@ test('after an offer, request reads nothing', async () => {
   act(() => result.current.request('a'));
   await new Promise((r) => setTimeout(r, 30));
   expect(traverseData).not.toHaveBeenCalled();
-  expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 5 });
+  expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 5, unique: false });
 });
 
 test('an offered count is stored for 24 h like a measured one', async () => {
   const ctx = stubCtx({
     dataMarts: { list: vi.fn(), traverseData: vi.fn() },
-    getJson: async () => ({ id: 'x', schema: { fields: [{ name: 'id', type: 'INT64', isPrimaryKey: true }] } }),
+    getJson: async () => ({ id: 'x', schema: { fields: [{ name: 'id', type: 'INT64', isPrimaryKey: false }] } }),
     postJson: async () => ({ items: [] }),
   });
   const wrapper = ({ children }: { children: ReactNode }) => <AppServices ctx={ctx}><StoreProvider>{children}</StoreProvider></AppServices>;
@@ -291,11 +291,11 @@ test('hold dims a card that has a count and adds no read; offer clears it', asyn
   const traverseData = vi.fn(async () => traversalOf([{ day: 'x' }], 2, 7));
   const { result } = renderHook(() => useCardStatus(modelOf(['a']), ['a'], 0), { wrapper: setup(traverseData) });
   act(() => result.current.request('a'));
-  await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 7 }));
+  await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 7, unique: false }));
   act(() => result.current.hold('a'));
-  expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 7, stale: true });
+  expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 7, stale: true, unique: false });
   act(() => result.current.offer('a', 9));
-  expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 9 });
+  expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 9, unique: false });
   expect(traverseData).toHaveBeenCalledTimes(1);
 });
 
@@ -311,4 +311,35 @@ test('a model reload drops the kept value reads', async () => {
   expect(suggestFromSearch(ctx, 'a', field)).toEqual(['DE']);
   act(() => result.current.store[1]({ type: 'refreshModel' }));
   await waitFor(() => expect(suggestFromSearch(ctx, 'a', field)).toBeNull());
+});
+
+function setupKeyed(traverseData: () => Promise<ReturnType<typeof traversalOf>>) {
+  const ctx = stubCtx({
+    dataMarts: { list: vi.fn(), traverseData },
+    getJson: async () => ({ id: 'x', schema: { fields: [{ name: 'id', type: 'INT64', isPrimaryKey: true }] } }),
+    postJson: async () => ({ items: [] }),
+  });
+  const wrapper = ({ children }: { children: ReactNode }) => <AppServices ctx={ctx}><StoreProvider>{children}</StoreProvider></AppServices>;
+  return { ctx, wrapper };
+}
+
+test('a mart with a key is counted by unique records in one read with no total', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 12 }]));
+  const { wrapper } = setupKeyed(traverseData);
+  const { result } = renderHook(() => useCardStatus(modelOf(['a']), ['a'], 0), { wrapper });
+  act(() => result.current.request('a'));
+  await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 12, unique: true }));
+  expect(traverseData).toHaveBeenCalledTimes(1);
+  expect(traverseData).toHaveBeenCalledWith('a', { uniqueCount: [''] });
+});
+
+test('the grid total offered for a mart with a key is stored and shown as unique records', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 12 }]));
+  const { ctx, wrapper } = setupKeyed(traverseData);
+  const { result } = renderHook(() => useCardStatus(modelOf(['a']), ['a'], 0), { wrapper });
+  act(() => result.current.request('a'));
+  await waitFor(() => expect(result.current.counts.get('a')?.state).toBe('ok')); // the schema is loaded now
+  act(() => result.current.offer('a', 15));
+  expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 15, unique: true });
+  await waitFor(async () => expect((await ctx.collections('row-counts').get('a'))?.document).toMatchObject({ count: 15, unique: true }));
 });

@@ -31,6 +31,9 @@ export const count = (n: number, noun: string): string => `${num(n)} ${noun}${n 
 /** "11.1K rows", "1 row": the badge text for a row count already shortened by the caller. */
 export const rowCountLabel = (amount: string): string => `${amount} ${amount === '1' ? 'row' : 'rows'}`;
 
+/** "11.1K unique records", "1 unique record": the badge text for the unique records of a data mart with a primary key. */
+export const uniqueRecordsLabel = (amount: string): string => `${amount} unique ${amount === '1' ? 'record' : 'records'}`;
+
 /** The badge amount: "200 of 12,345" when more rows exist and the total is known, else "200+" (more rows) or the plain count. */
 export const rowsLabel = (loaded: number, hasMore: boolean, total: number | null): string =>
   hasMore && total !== null && total > loaded ? `${num(loaded)} of ${num(total)}` : `${loaded}${hasMore ? '+' : ''}`;

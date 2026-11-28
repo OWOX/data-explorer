@@ -105,7 +105,7 @@ describe('MartCard', () => {
     const { rerender, props } = renderMart();
     expect(screen.getByText('12.4K rows')).toBeInTheDocument();
     rerender(<TooltipProvider><MartCard {...props} count={{ state: 'loading' }} /></TooltipProvider>);
-    expect(screen.getByLabelText('Counting rows')).toBeInTheDocument();
+    expect(screen.getByLabelText('Counting')).toBeInTheDocument();
     rerender(<TooltipProvider><MartCard {...props} count={{ state: 'error', message: 'nope' }} /></TooltipProvider>);
     await userEvent.click(screen.getByText('—'));
     expect(props.onRetryCount).toHaveBeenCalledTimes(1);
@@ -115,10 +115,10 @@ describe('MartCard', () => {
   test('a card waiting for its count shows a dash that says why', async () => {
     for (const state of ['idle', 'queued'] as const) {
       const { unmount } = renderMart({ count: { state } });
-      const badge = screen.getByLabelText('Waiting to count rows');
+      const badge = screen.getByLabelText('Waiting to count');
       expect(badge).toHaveTextContent('—');
       await userEvent.hover(badge);
-      expect((await screen.findAllByText('Waiting to count rows. Up to 4 data marts count at a time.')).length).toBeGreaterThan(0);
+      expect((await screen.findAllByText('Waiting to count. Up to 4 data marts count at a time.')).length).toBeGreaterThan(0);
       unmount();
     }
   });
@@ -327,6 +327,33 @@ describe('the row count badge', () => {
     await userEvent.hover(screen.getByText('56 rows'));
     expect((await screen.findAllByText("56 rows match this data mart's filters")).length).toBeGreaterThan(0);
   });
+  test('a unique count says unique records, and its tooltip is the exact number', async () => {
+    renderMart({ count: { state: 'ok', value: 1234, unique: true } });
+    expect(screen.getByText('1.2K unique records')).toBeInTheDocument();
+    await userEvent.hover(screen.getByText('1.2K unique records'));
+    expect((await screen.findAllByText('1,234 unique records')).length).toBeGreaterThan(0);
+  });
+  test('one unique record is singular', () => {
+    renderMart({ count: { state: 'ok', value: 1, unique: true } });
+    expect(screen.getByText('1 unique record')).toBeInTheDocument();
+  });
+  test('a filtered unique count gives its tooltip out of the total, or alone with no total or above it', async () => {
+    renderMart({ count: { state: 'ok', value: 1234, unique: true }, filtered: { state: { state: 'ok', value: 56, unique: true }, partial: false } });
+    await userEvent.hover(screen.getByText('56 unique records'));
+    expect((await screen.findAllByText("56 of 1,234 unique records match this data mart's filters")).length).toBeGreaterThan(0);
+    cleanup();
+    renderMart({ count: { state: 'loading' }, filtered: { state: { state: 'ok', value: 56, unique: true }, partial: false } });
+    await userEvent.hover(screen.getByText('56 unique records'));
+    expect((await screen.findAllByText("56 unique records match this data mart's filters")).length).toBeGreaterThan(0);
+    cleanup();
+    renderMart({ count: { state: 'ok', value: 50, unique: true }, filtered: { state: { state: 'ok', value: 56, unique: true }, partial: false } });
+    await userEvent.hover(screen.getByText('56 unique records'));
+    expect((await screen.findAllByText("56 unique records match this data mart's filters")).length).toBeGreaterThan(0);
+  });
+  test('a count with no flag still says rows', () => {
+    renderMart({ count: { state: 'ok', value: 3, unique: false } });
+    expect(screen.getByText('3 rows')).toBeInTheDocument();
+  });
   test('a filtered error retries the filtered read, not the count', async () => {
     const onRetryFiltered = vi.fn();
     const { props } = renderMart({ filtered: { state: { state: 'error', message: 'nope' }, partial: false }, filteredRetry: onRetryFiltered });
@@ -337,10 +364,10 @@ describe('the row count badge', () => {
   });
   test('a filtered count under way shows the waiting and counting badges', () => {
     renderMart({ filtered: { state: { state: 'queued' }, partial: false } });
-    expect(screen.getByLabelText('Waiting to count rows')).toBeInTheDocument();
+    expect(screen.getByLabelText('Waiting to count')).toBeInTheDocument();
     cleanup();
     renderMart({ filtered: { state: { state: 'loading' }, partial: false } });
-    expect(screen.getByLabelText('Counting rows')).toBeInTheDocument();
+    expect(screen.getByLabelText('Counting')).toBeInTheDocument();
   });
   test('rules that cannot be counted leave the unfiltered count and a note in the tooltip', async () => {
     renderMart({ count: { state: 'ok', value: 1234 }, filtered: { partial: true } });
@@ -355,12 +382,12 @@ describe('the row count badge', () => {
   });
   test('the note ends every tooltip of a partial card: waiting, counting, error', async () => {
     renderMart({ count: { state: 'queued' }, filtered: { partial: true } });
-    await userEvent.hover(screen.getByLabelText('Waiting to count rows'));
-    expect((await screen.findAllByText('Waiting to count rows. Up to 4 data marts count at a time. Filters on calculated fields are not counted.')).length).toBeGreaterThan(0);
+    await userEvent.hover(screen.getByLabelText('Waiting to count'));
+    expect((await screen.findAllByText('Waiting to count. Up to 4 data marts count at a time. Filters on calculated fields are not counted.')).length).toBeGreaterThan(0);
     cleanup();
     renderMart({ count: { state: 'loading' }, filtered: { partial: true } });
-    await userEvent.hover(screen.getByLabelText('Counting rows'));
-    expect((await screen.findAllByText('Counting rows. Filters on calculated fields are not counted.')).length).toBeGreaterThan(0);
+    await userEvent.hover(screen.getByLabelText('Counting'));
+    expect((await screen.findAllByText('Counting. Filters on calculated fields are not counted.')).length).toBeGreaterThan(0);
     cleanup();
     renderMart({ count: { state: 'error', message: 'nope' }, filtered: { partial: true } });
     await userEvent.hover(screen.getByText('—'));

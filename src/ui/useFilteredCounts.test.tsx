@@ -17,7 +17,7 @@ const rulesOf = (martId: string, value = 1, partial = false): CardRules => ({ ma
 function setup(traverseData: (...a: unknown[]) => Promise<ReturnType<typeof traversalOf>>) {
   const ctx = stubCtx({
     dataMarts: { list: vi.fn(), traverseData },
-    getJson: async () => ({ id: 'x', schema: { fields: [{ name: 'id', type: 'INT64', isPrimaryKey: true }] } }),
+    getJson: async () => ({ id: 'x', schema: { fields: [{ name: 'id', type: 'INT64', isPrimaryKey: false }] } }),
     postJson: async () => ({ items: [] }),
   });
   return ({ children }: { children: ReactNode }) => <AppServices ctx={ctx}><StoreProvider>{children}</StoreProvider></AppServices>;
@@ -27,8 +27,8 @@ test('two paths of one mart with equal rules share one read', async () => {
   const traverseData = vi.fn(async () => traversalOf([{ id: 1 }], 2, 7));
   const byPath = new Map([['orders', rulesOf('m-orders')], ['x', rulesOf('m-orders')]]);
   const { result } = renderHook(() => useFilteredCounts(modelOf(['m-orders']), byPath), { wrapper: setup(traverseData) });
-  await waitFor(() => expect(result.current.filtered.get('x')?.state).toEqual({ state: 'ok', value: 7 }));
-  expect(result.current.filtered.get('orders')?.state).toEqual({ state: 'ok', value: 7 });
+  await waitFor(() => expect(result.current.filtered.get('x')?.state).toEqual({ state: 'ok', value: 7, unique: false }));
+  expect(result.current.filtered.get('orders')?.state).toEqual({ state: 'ok', value: 7, unique: false });
   expect(traverseData).toHaveBeenCalledTimes(1);
 });
 
@@ -41,7 +41,7 @@ test('a missing total is an error, and retry reads again', async () => {
   await waitFor(() => expect(result.current.filtered.get('')?.state?.state).toBe('error'));
   total = 3;
   act(() => result.current.retry(''));
-  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 3 }));
+  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 3, unique: false }));
   expect(traverseData).toHaveBeenCalledTimes(2);
 });
 
@@ -54,12 +54,12 @@ test('changed rules keep the old value, stale, until the new one lands', async (
   });
   const model = modelOf(['a']);
   const { result, rerender } = renderHook(({ byPath }) => useFilteredCounts(model, byPath), { wrapper: setup(traverseData), initialProps: { byPath: new Map([['', rulesOf('a', 1)]]) } });
-  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 10 }));
+  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 10, unique: false }));
   rerender({ byPath: new Map([['', rulesOf('a', 2)]]) });
-  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 10, stale: true }));
+  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 10, stale: true, unique: false }));
   await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
   act(() => release());
-  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 20 }));
+  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 20, unique: false }));
 });
 
 test('a partial path without rules has no state and sends no read', async () => {
@@ -93,7 +93,7 @@ test('at most 4 reads run at once', async () => {
   const ids = ['a', 'b', 'c', 'd', 'e', 'f'];
   const byPath = new Map(ids.map((id) => [id, rulesOf(id)]));
   const { result } = renderHook(() => useFilteredCounts(modelOf(ids), byPath), { wrapper: setup(traverseData) });
-  await waitFor(() => expect(result.current.filtered.get('f')?.state).toEqual({ state: 'ok', value: 7 }));
+  await waitFor(() => expect(result.current.filtered.get('f')?.state).toEqual({ state: 'ok', value: 7, unique: false }));
   expect(traverseData).toHaveBeenCalledTimes(6);
   expect(peak).toBe(4);
 });
@@ -105,11 +105,11 @@ test('a seeded count turns a queued path ok and its read is never sent', async (
   const { result } = renderHook(() => useFilteredCounts(modelOf(ids), byPath), { wrapper: setup(traverseData) });
   await waitFor(() => expect(result.current.filtered.get('e')?.state).toEqual({ state: 'queued' }));
   act(() => result.current.seed(filteredKey('e', [rule(1)], null), 99));
-  expect(result.current.filtered.get('e')?.state).toEqual({ state: 'ok', value: 99 });
-  await waitFor(() => expect(result.current.filtered.get('d')?.state).toEqual({ state: 'ok', value: 7 }));
+  expect(result.current.filtered.get('e')?.state).toEqual({ state: 'ok', value: 99, unique: false });
+  await waitFor(() => expect(result.current.filtered.get('d')?.state).toEqual({ state: 'ok', value: 7, unique: false }));
   await new Promise((r) => setTimeout(r, 30));
   expect(traverseData).toHaveBeenCalledTimes(4);
-  expect(result.current.filtered.get('e')?.state).toEqual({ state: 'ok', value: 99 });
+  expect(result.current.filtered.get('e')?.state).toEqual({ state: 'ok', value: 99, unique: false });
 });
 
 test('forget reads a mart again, keeping the old value dimmed meanwhile', async () => {
@@ -122,13 +122,13 @@ test('forget reads a mart again, keeping the old value dimmed meanwhile', async 
   const byPath = new Map([['', rulesOf('a')]]);
   const model = modelOf(['a']);
   const { result } = renderHook(() => useFilteredCounts(model, byPath), { wrapper: setup(traverseData) });
-  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 7 }));
+  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 7, unique: false }));
   value = 9;
   act(() => result.current.forget('a'));
   await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
-  expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 7, stale: true });
+  expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 7, stale: true, unique: false });
   act(() => release());
-  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 9 }));
+  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 9, unique: false }));
   expect(traverseData).toHaveBeenCalledTimes(2);
 });
 
@@ -159,7 +159,7 @@ test('a path the grid will answer sends no read, and one the grid stops answerin
   expect(traverseData).not.toHaveBeenCalled();
   expect(result.current.filtered.get('')?.state).toEqual({ state: 'queued' });
   rerender({ byPath: new Map([['', { ...rulesOf('a'), awaitGrid: false }]]) });
-  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 7 }));
+  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 7, unique: false }));
   expect(traverseData).toHaveBeenCalledTimes(1);
 });
 
@@ -168,7 +168,7 @@ test('forget with the grid answering reads nothing until the path stops awaiting
   const model = modelOf(['a']);
   const first = new Map([['', rulesOf('a')]]);
   const { result, rerender } = renderHook(({ byPath }) => useFilteredCounts(model, byPath), { wrapper: setup(traverseData), initialProps: { byPath: first } });
-  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 7 }));
+  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 7, unique: false }));
   act(() => result.current.forget('a', true));
   await new Promise((r) => setTimeout(r, 30));
   expect(traverseData).toHaveBeenCalledTimes(1);
@@ -191,12 +191,12 @@ test('going back to a key whose read failed while the path wanted a cached one r
   await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(1));
   act(() => result.current.seed(filteredKey('a', [rule(2)], null), 5));
   rerender({ byPath: new Map([['', rulesOf('a', 2)]]) });
-  expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 5 });
+  expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 5, unique: false });
   fail = true;
   await act(async () => { release(); await new Promise((r) => setTimeout(r, 10)); });
   fail = false;
   rerender({ byPath: new Map([['', rulesOf('a', 1)]]) });
-  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 7 }));
+  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 7, unique: false }));
   expect(traverseData).toHaveBeenCalledTimes(2);
 });
 
@@ -216,6 +216,35 @@ test('going back to a key that was queued when the path wanted a cached one read
   rerender({ byPath: new Map([...others, ['', rulesOf('a', 2)] as const]) });
   rerender({ byPath: new Map([...others, ['', rulesOf('a', 1)] as const]) });
   await act(async () => { releases.forEach((r) => r()); });
-  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 7 }));
+  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 7, unique: false }));
   expect(traverseData).toHaveBeenCalledWith('a', expect.anything());
+});
+
+function setupKeyed(traverseData: (...a: unknown[]) => Promise<ReturnType<typeof traversalOf>>) {
+  const ctx = stubCtx({
+    dataMarts: { list: vi.fn(), traverseData },
+    getJson: async () => ({ id: 'x', schema: { fields: [{ name: 'id', type: 'INT64', isPrimaryKey: true }] } }),
+    postJson: async () => ({ items: [] }),
+  });
+  return ({ children }: { children: ReactNode }) => <AppServices ctx={ctx}><StoreProvider>{children}</StoreProvider></AppServices>;
+}
+
+test('a mart with a key is counted by unique records under its rules, with no total', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 7 }]));
+  const byPath = new Map([['', rulesOf('a')]]);
+  const { result } = renderHook(() => useFilteredCounts(modelOf(['a']), byPath), { wrapper: setupKeyed(traverseData) });
+  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 7, unique: true }));
+  expect(traverseData).toHaveBeenCalledTimes(1);
+  expect(traverseData).toHaveBeenCalledWith('a', { uniqueCount: [''], filter: [rule(1)] });
+});
+
+test('a seeded total for a mart with a key is shown as unique records, with no read', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 7 }]));
+  const model = modelOf(['a']);
+  const { result, rerender } = renderHook(({ byPath }) => useFilteredCounts(model, byPath), { wrapper: setupKeyed(traverseData), initialProps: { byPath: new Map([['', rulesOf('a')]]) } });
+  await waitFor(() => expect(result.current.filtered.get('')?.state?.state).toBe('ok')); // the schema is loaded now
+  act(() => result.current.seed(filteredKey('a', [rule(2)], null), 5));
+  rerender({ byPath: new Map([['', rulesOf('a', 2)]]) });
+  expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 5, unique: true });
+  expect(traverseData).toHaveBeenCalledTimes(1);
 });

@@ -21,7 +21,7 @@ async function setup(grid: GridState, opts: { calc?: boolean; noKey?: boolean; f
   const base = createMockCtx(fixtures, { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
-  const ctx: Ctx = { ...base, owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); if (opts.failGrid && id === 'orders' && o.limit !== 1 && o.filter?.length) return Promise.reject(new Error('grid read failed')); return real(id, o); } } } };
+  const ctx: Ctx = { ...base, owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); if (opts.failGrid && id === 'orders' && !isCardRead(o) && o.filter?.length) return Promise.reject(new Error('grid read failed')); return real(id, o); } } } };
   const model: Model = await loadModel(ctx);
   const rules: (Map<string, CardRules> | null)[] = [];
   const spies = {
@@ -44,11 +44,14 @@ async function setup(grid: GridState, opts: { calc?: boolean; noKey?: boolean; f
   const band = opts.wired ? <Wired /> : <DataBand model={model} folded={false} onFold={() => undefined} {...spies} />;
   const tree = <AppServices ctx={ctx}><StoreProvider><TooltipProvider><Probe />{band}</TooltipProvider></StoreProvider></AppServices>;
   const mount = () => render(opts.strict ? <StrictMode>{tree}</StrictMode> : tree);
-  const filteredReads = () => queries.filter((q) => q.limit === 1 && q.includeTotalRowCount && q.filter?.length);
+  // A card's own count: one row and its total for a mart with no key, `uniqueCount: ['']` alone (and the filter) for a mart with a key.
+  const filteredReads = () => queries.filter((q) => isCardRead(q) && q.filter?.length);
   const total = async (filter?: TraverseOptions['filter']) => (await real('orders', { column: ['id'], limit: 1, includeTotalRowCount: true, ...(filter ? { filter } : {}) })).totalRowCount as number;
   return { queries, rules, spies, mount, counts, filteredReads, model, total, scoreReads: () => queries.filter((q) => q.uniqueCount?.length) };
 }
 
+const isCardRead = (q: TraverseOptions) =>
+  (q.limit === 1 && !!q.includeTotalRowCount) || (q.uniqueCount?.length === 1 && q.uniqueCount[0] === '' && Object.keys(q).every((k) => k === 'uniqueCount' || k === 'filter'));
 const data = () => document.getElementById('band-data')!;
 const calm = () => act(async () => { await new Promise((r) => setTimeout(r, 120)); });
 const rowsShown = () => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true);
@@ -162,10 +165,10 @@ const mainCard = (t: { counts: { current: ReturnType<typeof useFilteredCounts> |
 test('a main filter in a plain Table sends the grid read alone, and the card takes the grid total', async () => {
   const t = await setup({ ...plain, filters: paid }, { wired: true });
   t.mount();
-  await waitFor(() => expect(mainCard(t)).toEqual({ state: 'ok', value: expect.any(Number) }));
+  await waitFor(() => expect(mainCard(t)).toEqual({ state: 'ok', value: expect.any(Number), unique: true }));
   await calm();
   expect(t.filteredReads()).toHaveLength(0);
-  expect(t.queries.filter((q) => q.filter?.length && q.limit !== 1)).toHaveLength(1);
+  expect(t.queries.filter((q) => q.filter?.length && !isCardRead(q))).toHaveLength(1);
   expect((mainCard(t) as { value: number }).value).toBe(await t.total(last(t).get('')!.rules));
 });
 
@@ -173,18 +176,18 @@ test('when the grid read fails, one count read follows', async () => {
   const t = await setup({ ...plain, filters: paid }, { wired: true, failGrid: true });
   t.mount();
   await waitFor(() => expect(t.filteredReads()).toHaveLength(1));
-  await waitFor(() => expect(mainCard(t)).toEqual({ state: 'ok', value: expect.any(Number) }));
+  await waitFor(() => expect(mainCard(t)).toEqual({ state: 'ok', value: expect.any(Number), unique: true }));
 });
 
 test('Refresh with a main filter in a plain Table sends no filtered count read, and the card ends ok', async () => {
   const t = await setup({ ...plain, filters: paid }, { wired: true });
   t.mount();
-  await waitFor(() => expect(mainCard(t)).toEqual({ state: 'ok', value: expect.any(Number) }));
+  await waitFor(() => expect(mainCard(t)).toEqual({ state: 'ok', value: expect.any(Number), unique: true }));
   await calm();
   const before = t.queries.length;
   await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
   await calm();
-  await waitFor(() => expect(mainCard(t)).toEqual({ state: 'ok', value: expect.any(Number) }));
-  expect(t.queries.slice(before).filter((q) => q.limit === 1 && q.includeTotalRowCount)).toHaveLength(0);
-  expect(t.queries.slice(before).filter((q) => q.filter?.length && q.limit !== 1)).toHaveLength(1);
+  await waitFor(() => expect(mainCard(t)).toEqual({ state: 'ok', value: expect.any(Number), unique: true }));
+  expect(t.queries.slice(before).filter(isCardRead)).toHaveLength(0);
+  expect(t.queries.slice(before).filter((q) => q.filter?.length && !isCardRead(q))).toHaveLength(1);
 });

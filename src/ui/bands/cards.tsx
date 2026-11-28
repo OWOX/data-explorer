@@ -3,7 +3,7 @@ import { CirclePlus, CircleX, ExternalLink, History, LoaderCircle, Plug } from '
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { Context, DqSummary, Mart, Source } from '../../model/types';
 import { COUNT_CONCURRENCY } from '../../config';
-import { compactNumber, count as plural, num, rowCountLabel, relativeTime } from '../format';
+import { compactNumber, count as plural, num, rowCountLabel, uniqueRecordsLabel, relativeTime } from '../format';
 import { dqCardTone, dqVisual } from '../icons';
 import { Hint, TipLines, Tooltip } from '../Tooltip';
 import { whenInView } from './inview';
@@ -24,7 +24,7 @@ export type CountState =
   | { state: 'queued' }
   | { state: 'loading' }
   /** `stale`: a recount is under way and the value is the previous one, shown dimmed until the new one arrives. */
-  | { state: 'ok'; value: number | null; stale?: boolean }
+  | { state: 'ok'; value: number | null; stale?: boolean; /** The count is of unique records (the mart has a primary key), not of rows. */ unique?: boolean }
   | { state: 'error'; message: string };
 
 /** A card selects on click and on Enter, but not when the key or click came from a control inside it. */
@@ -112,13 +112,13 @@ function CountBadge({ count, filtered, countable, onRetry, onRetryFiltered }: { 
   // The row reserves one badge's height (bands.css), so the count arriving or turning out empty does not move the bands below.
   if (shown.state === 'idle' || shown.state === 'queued') {
     return (
-      <Tooltip content={tip(`Waiting to count rows. Up to ${COUNT_CONCURRENCY} data marts count at a time.`)}>
-        <span className="dm-badge" aria-label="Waiting to count rows">—</span>
+      <Tooltip content={tip(`Waiting to count. Up to ${COUNT_CONCURRENCY} data marts count at a time.`)}>
+        <span className="dm-badge" aria-label="Waiting to count">—</span>
       </Tooltip>
     );
   }
   if (shown.state === 'loading') {
-    return <Tooltip content={tip('Counting rows…')}><span className="dm-badge" aria-label="Counting rows"><LoaderCircle className="dm-spin" size={12} /></span></Tooltip>;
+    return <Tooltip content={tip('Counting…')}><span className="dm-badge" aria-label="Counting"><LoaderCircle className="dm-spin" size={12} /></span></Tooltip>;
   }
   if (shown.state === 'error') {
     return (
@@ -134,12 +134,15 @@ function CountBadge({ count, filtered, countable, onRetry, onRetryFiltered }: { 
   if (shown.value === null) {
     return <Tooltip content={tip("Can't count rows: this data mart has no field that can be read.")}><span className="dm-badge">—</span></Tooltip>;
   }
+  const unique = !!shown.unique;
+  const what = unique ? 'unique records' : 'rows';
+  const label = unique ? uniqueRecordsLabel : rowCountLabel;
   const text = !own
-    ? rowCountLabel(num(shown.value))
+    ? label(num(shown.value))
     : count.state === 'ok' && count.value !== null && shown.value <= count.value
-      ? `${num(shown.value)} of ${num(count.value)} rows match this data mart's filters`
-      : `${num(shown.value)} rows match this data mart's filters`;
-  return <Tooltip content={tip(text)}><span className={`dm-badge${shown.stale ? ' dm-stale' : ''}`} aria-busy={shown.stale || undefined}>{rowCountLabel(compactNumber(shown.value))}</span></Tooltip>;
+      ? `${num(shown.value)} of ${num(count.value)} ${what} match this data mart's filters`
+      : `${num(shown.value)} ${what} match this data mart's filters`;
+  return <Tooltip content={tip(text)}><span className={`dm-badge${shown.stale ? ' dm-stale' : ''}`} aria-busy={shown.stale || undefined}>{label(compactNumber(shown.value))}</span></Tooltip>;
 }
 
 /** The contexts of a mart, in the project's order. */

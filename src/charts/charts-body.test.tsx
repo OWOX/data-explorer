@@ -1419,7 +1419,9 @@ async function filterStatus() {
   await userEvent.type(within(dialog).getByLabelText('Value'), 'paid');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
 }
-const isBadge = (o: TraverseOptions) => !!o.filter?.length && !!o.uniqueCount && !o.limit && !o.dateTrunc && !o.aggregation?.some((a) => a.function === 'MIN');
+// The card's own filtered count of a mart with a key is `{ uniqueCount: [''], filter }` and nothing else: it is the card's read, not the chart's.
+const isCardUniqueCount = (o: TraverseOptions) => o.uniqueCount?.length === 1 && o.uniqueCount[0] === '' && Object.keys(o).every((k) => k === 'uniqueCount' || k === 'filter');
+const isBadge = (o: TraverseOptions) => !!o.filter?.length && !!o.uniqueCount && !o.limit && !o.dateTrunc && !o.aggregation?.some((a) => a.function === 'MIN') && !isCardUniqueCount(o);
 
 test('Charts under a filter: the match badge joins the scorecard read and sends no read of its own', async () => {
   const t = await charts({ columns: SINGLE });
