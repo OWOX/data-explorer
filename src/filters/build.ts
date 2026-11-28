@@ -2,7 +2,7 @@ import type { Field, Schema } from '../model/types';
 import type { RelativeDatePreset, TraverseFilter, TraverseFilterRule } from '../sdk/types';
 import type { AggFn, AggregationRule } from '../model/aggregation';
 import { havingField, sliceField } from './slice';
-import { jsRegexSource } from './regex';
+import { normalizeType } from '../model/field-category';
 import { parseListText } from './list-text';
 import { isDateTimeField, operatorsFor, RELATIVE_MAX_N, RELATIVE_PRESETS, type OpId } from './catalogue';
 
@@ -18,10 +18,14 @@ const numeric = (v: unknown) => filled(v) && Number.isFinite(Number(v));
 
 /** The backend's IN_LIST_MAX_VALUES. */
 const IN_LIST_MAX = 500;
-const validRegex = (v: string) => { try { const r = jsRegexSource(v); new RegExp(r.source, r.flags); return true; } catch { return false; } };
+const validRegex = (v: string) => { try { new RegExp(v); return true; } catch { return false; } };
 const realDate = (y: number, m: number, d: number) => { const dt = new Date(Date.UTC(y, m - 1, d)); return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d; };
 const DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
-const STAMP = /^(\d{4})-(\d{2})-(\d{2})[T ]([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d{1,9})?)?(Z| ?UTC|[+-]\d{2}:?\d{2})?$/;
+const ZONE = String.raw`(?: ?(?:Z|UTC|[+-](?:0\d|1[0-4])(?::?[0-5]\d)?))`;
+/** [1] year, [2] month, [3] day, [4] the zone, if any. A fraction (1-6 digits) and a zone may follow only `:SS`. */
+const STAMP = new RegExp(String.raw`^(\d{4})-(\d{2})-(\d{2})(?:[T ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,6})?(${ZONE})?)?)$`);
+/** Instant types carry a zone; DATETIME and the no-zone timestamps do not. */
+const ZONED_TYPES = new Set(['TIMESTAMP', 'TIMESTAMPTZ', 'TIMESTAMP WITH TIME ZONE', 'TIMESTAMP_LTZ', 'TIMESTAMP_TZ']);
 const CLOCK = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
 /** One in / not_in entry, as the extension's list editor checks it: a real YYYY-MM-DD (a datetime may add HH:MM(:SS)), HH:MM(:SS), a number. */
 function validEntry(x: string, field: Field): boolean {
@@ -29,7 +33,8 @@ function validEntry(x: string, field: Field): boolean {
   if (field.category === 'time') return CLOCK.test(x);
   if (field.category === 'date') {
     const m = DAY.exec(x) ?? (isDateTimeField(field) ? STAMP.exec(x) : null);
-    return !!m && realDate(Number(m[1]), Number(m[2]), Number(m[3]));
+    if (!m || !realDate(Number(m[1]), Number(m[2]), Number(m[3]))) return false;
+    return !m[4] || ZONED_TYPES.has(normalizeType(field.type));
   }
   return true;
 }
@@ -59,7 +64,7 @@ export function isComplete(f: ColumnFilter, field: Field): boolean {
 }
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
-const LOCAL_DATETIME = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}(?::\d{2})?)$/;
+const LOCAL_DATETIME = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(.*)$/;
 const NO_SECONDS = /^\d{2}:\d{2}$/;
 
 /**
@@ -69,7 +74,7 @@ const NO_SECONDS = /^\d{2}:\d{2}$/;
  */
 const withSeconds = (v: string) => {
   const m = LOCAL_DATETIME.exec(v);
-  if (m) return `${m[1]} ${m[2]!.length === 5 ? `${m[2]}:00` : m[2]}`;
+  if (m) return `${m[1]} ${m[2]}${m[3] || ':00'}`;
   return NO_SECONDS.test(v) ? `${v}:00` : v;
 };
 /** A date-only bound on a timestamp widens to the start or the end of that day, so "to" is inclusive. */
@@ -85,7 +90,7 @@ export function toTraverseFilter(f: ColumnFilter, field: Field): TraverseFilterR
       return { column, operator: f.op };
     // A datetime has no single moment to match: "on" a day is that whole day.
     case 'on':
-      if (isDateTimeField(field)) return { column, operator: 'between', value: { from: bound(String(f.value), false), to: bound(String(f.value), true) } };
+      if (isDateTimeField(field)) { const day = String(f.value).slice(0, 10); return { column, operator: 'between', value: { from: bound(day, false), to: bound(day, true) } }; }
       return { column, operator: 'eq', value: scalar(f.value) as string };
     case 'in': case 'not_in': {
       const tokens = parseListText(String(f.value ?? ''));

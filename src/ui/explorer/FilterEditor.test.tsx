@@ -423,3 +423,23 @@ test('loaded between bounds with a fraction and a zone show in the inputs', () =
   expect(screen.getByLabelText('From')).toHaveValue('2024-01-01T10:00');
   expect(screen.getByLabelText('To')).toHaveValue('2024-01-02T11:30');
 });
+
+test('editing a loaded zoned datetime keeps its zone, and the zone shows beside the input', async () => {
+  const { onApply } = open(ts, { field: 'created_at', op: 'gte', value: '2024-01-01 10:00:00+02:00' });
+  expect(screen.getByTestId('zone-note')).toHaveTextContent('+02:00');
+  fireEvent.change(screen.getByLabelText('Value'), { target: { value: '2024-01-02T10:00' } });
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledWith({ field: 'created_at', op: 'gte', value: '2024-01-02 10:00:00+02:00' });
+});
+
+test('editing one between bound keeps the zone on both', async () => {
+  const { onApply } = open(ts, { field: 'created_at', op: 'between', value: { from: '2024-01-01 10:00:00+02:00', to: '2024-01-03 10:00:00+02:00' } });
+  fireEvent.change(screen.getByLabelText('From'), { target: { value: '2024-01-02T09:30' } });
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledWith({ field: 'created_at', op: 'between', value: { from: '2024-01-02 09:30:00+02:00', to: '2024-01-03 10:00:00+02:00' } });
+});
+
+test('a loaded regex the editor cannot compile shows with Apply disabled', () => {
+  open({ ...num, name: 'city', type: 'STRING', category: 'string' }, { field: 'city', op: 'regex', value: '(?i)foo' });
+  expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
+});

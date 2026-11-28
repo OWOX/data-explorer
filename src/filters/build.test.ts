@@ -64,9 +64,9 @@ test('relative N is capped at 3650', () => {
   expect(isComplete({ field: 'created_at', op: 'relative', value: { kind: 'last_n_days', n: 3651 } }, ts)).toBe(false);
 });
 
-test('a full timestamp from a row (fraction or zone) is not rewritten', () => {
+test('a full timestamp from a row keeps its fraction and zone, and only the T becomes a space', () => {
   expect(toTraverseFilter({ field: 'created_at', op: 'between', value: { from: '2026-11-01T10:00:00.123Z', to: '2026-11-01T10:00:00.123Z' } }, ts))
-    .toEqual({ column: 'created_at', operator: 'between', value: { from: '2026-11-01T10:00:00.123Z', to: '2026-11-01T10:00:00.123Z' } });
+    .toEqual({ column: 'created_at', operator: 'between', value: { from: '2026-11-01 10:00:00.123Z', to: '2026-11-01 10:00:00.123Z' } });
 });
 
 describe('slices and HAVING in toTraverseFilters', () => {
@@ -180,20 +180,39 @@ describe('is any of / is none of', () => {
   });
 });
 
-describe('stamps and RE2 patterns', () => {
-  const stamps = ['2024-01-01 10:00:00.123', '2024-01-01T10:00:00Z', '2024-01-01 10:00:00+02:00', '2024-01-01 10:00:00+0200', '2024-01-01 10:00:00 UTC', '2024-01-01 10:00:00.123456789Z'];
+describe('stamps and regex', () => {
+  const stamps = ['2024-01-01 10:00:00.123', '2024-01-01T10:00:00Z', '2024-01-01 10:00:00+02:00', '2024-01-01 10:00:00+0200', '2024-01-01 10:00:00 UTC', '2024-01-01 10:00:00.123456Z'];
   test('list entries on a timestamp accept a fraction and a zone, and build passes them through untouched', () => {
     for (const s of stamps) {
       expect(isComplete({ field: 'created_at', op: 'in', value: s }, ts)).toBe(true);
-      expect(toTraverseFilter({ field: 'created_at', op: 'in', value: `"${s}"` }, ts)).toEqual({ column: 'created_at', operator: 'in', value: [s] });
+      expect(toTraverseFilter({ field: 'created_at', op: 'in', value: `"${s}"` }, ts)).toEqual({ column: 'created_at', operator: 'in', value: [s.replace(/^(\d{4}-\d{2}-\d{2})T/, '$1 ')] });
     }
     expect(isComplete({ field: 'created_at', op: 'in', value: '2024-01-01 10:00:00.' }, ts)).toBe(false);
     expect(isComplete({ field: 'created_at', op: 'in', value: '2024-02-31 10:00:00Z' }, ts)).toBe(false);
   });
-  test('regex accepts RE2 inline flags and still rejects real syntax errors', () => {
-    for (const p of ['(?i)foo', '(?s)a.b', '(?m)^a', '(?is)a', '(?i:foo)bar', '(?U)a+', 'abc'])
-      expect(isComplete({ field: 'status', op: 'regex', value: p }, str)).toBe(true);
-    for (const p of ['(', '[a-', '(?i)('])
-      expect(isComplete({ field: 'status', op: 'regex', value: p }, str)).toBe(false);
+  test('a typed regex keeps the plain JS syntax check', () => {
+    expect(isComplete({ field: 'status', op: 'regex', value: '(?i)foo' }, str)).toBe(false);
+    expect(isComplete({ field: 'status', op: 'regex', value: 'abc' }, str)).toBe(true);
+  });
+  test('a zone is allowed only on zoned types, and a fraction or zone only after seconds', () => {
+    const dt: Field = { ...ts, type: 'DATETIME' };
+    const ok = (v: string, f: Field = ts) => isComplete({ field: f.name, op: 'in', value: v }, f);
+    expect(ok('2024-01-01 10:00:00+02:00', dt)).toBe(false);
+    expect(ok('2024-01-01 10:00:00.5', dt)).toBe(true);
+    for (const t of ['TIMESTAMP_NTZ', 'TIMESTAMP WITHOUT TIME ZONE']) expect(ok('2024-01-01 10:00:00Z', { ...ts, type: t })).toBe(false);
+    for (const t of ['TIMESTAMPTZ', 'TIMESTAMP WITH TIME ZONE', 'TIMESTAMP_LTZ', 'TIMESTAMP_TZ']) expect(ok('2024-01-01 10:00:00Z', { ...ts, type: t })).toBe(true);
+    expect(ok('2024-01-01 10:00Z')).toBe(false);
+    expect(ok('2024-01-01 10:00:00.1234567')).toBe(false);
+    for (const z of ['+14:00', '+02', '-0530', ' +02:00', ' UTC']) expect(ok(`2024-01-01 10:00:00${z}`)).toBe(true);
+    for (const z of ['+15:00', '+02:60']) expect(ok(`2024-01-01 10:00:00${z}`)).toBe(false);
+  });
+  test('withSeconds swaps the T in every stamp form and adds seconds only to a bare HH:MM', () => {
+    const out = (v: string) => (toTraverseFilter({ field: 'created_at', op: 'after', value: v }, ts) as { value: string }).value;
+    expect(out('2024-01-01T10:00')).toBe('2024-01-01 10:00:00');
+    expect(out('2024-01-01T10:00:00.5+02:00')).toBe('2024-01-01 10:00:00.5+02:00');
+    expect(out('2024-01-01T10:00:00Z')).toBe('2024-01-01 10:00:00Z');
+  });
+  test('"on" a datetime uses the date part of a full stamp for both bounds', () => {
+    expect(toTraverseFilter({ field: 'created_at', op: 'on', value: '2024-01-01 10:00:00' }, ts)).toEqual({ column: 'created_at', operator: 'between', value: { from: '2024-01-01 00:00:00', to: '2024-01-01 23:59:59' } });
   });
 });

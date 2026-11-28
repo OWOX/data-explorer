@@ -138,6 +138,15 @@ function OperatorForm({ field, value, onApply, onClear, note, values, startOp }:
     const m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2})?)/.exec(t);
     return m ? `${m[1]}T${m[2]}` : t;
   };
+  /** The zone a loaded stamp carries (`+02:00`, `Z`, `UTC`), which the input cannot show. */
+  const zoneOf = (v: unknown) => /\d{2}:\d{2}:\d{2}(?:\.\d+)?( ?(?:Z|UTC|[+-]\d{2}(?::?\d{2})?))$/.exec(String(v ?? ''))?.[1];
+  /** An edited datetime-local value, in the space form with seconds, keeping the zone the loaded value had. */
+  const edited = (old: unknown, raw: string, type: string) => {
+    const z = zoneOf(old);
+    const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::(\d{2}))?/.exec(raw);
+    return type === 'datetime-local' && z && m ? `${m[1]} ${m[2]}:${m[3] ?? '00'}${z}` : raw;
+  };
+  const zoneNote = (v: unknown, type: string) => { const z = type === 'datetime-local' ? zoneOf(v) : undefined; return z ? <span className="text-xs text-muted-foreground whitespace-nowrap" data-testid="zone-note">{z.trim()}</span> : null; };
   const dateType = field.category === 'time' ? 'time' : isDateTimeField(field) ? 'datetime-local' : 'date';
   // "On" a datetime column is a whole day.
   const valueType = op === 'on' && isDateTimeField(field) ? 'date' : dateType;
@@ -155,12 +164,21 @@ function OperatorForm({ field, value, onApply, onClear, note, values, startOp }:
       {def.value === 'number' && (
         <input aria-label="Value" className={input} type="number" value={String(val ?? '')} onChange={(e) => setVal(e.target.value)} />
       )}
-      {def.value === 'date' && <input aria-label="Value" className={input} type={valueType} value={shown(val, valueType)} onChange={(e) => setVal(e.target.value)} />}
+      {def.value === 'date' && (
+        <div className="flex items-center gap-2">
+          <input aria-label="Value" className={`${input} min-w-0 flex-1`} type={valueType} value={shown(val, valueType)} onChange={(e) => setVal(edited(val, e.target.value, valueType))} />
+          {zoneNote(val, valueType)}
+        </div>
+      )}
       {(def.value === 'number-range' || def.value === 'date-range') && (
         <div className="flex flex-wrap gap-2">
           {(['from', 'to'] as const).map((k) => (
-            <input key={k} aria-label={k === 'from' ? 'From' : 'To'} className={`${input} !w-auto min-w-0 flex-1 basis-40`} type={def.value === 'number-range' ? 'number' : dateType}
-              value={def.value === 'date-range' ? shown(range[k], dateType) : (range[k] ?? '')} onChange={(e) => setVal({ ...range, [k]: e.target.value })} />
+            <div key={k} className="flex min-w-0 flex-1 basis-40 items-center gap-2">
+              <input aria-label={k === 'from' ? 'From' : 'To'} className={`${input} min-w-0 flex-1`} type={def.value === 'number-range' ? 'number' : dateType}
+                value={def.value === 'date-range' ? shown(range[k], dateType) : (range[k] ?? '')}
+                onChange={(e) => setVal({ ...range, [k]: def.value === 'date-range' ? edited(range[k], e.target.value, dateType) : e.target.value })} />
+              {def.value === 'date-range' && zoneNote(range[k], dateType)}
+            </div>
           ))}
         </div>
       )}
