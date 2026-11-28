@@ -210,7 +210,7 @@ export function ExportMenu(p: Props) {
   function copyData() {
     if (!p.rows?.length || p.loading) { close(); return; }
     const fields = p.visible.flatMap((name) => p.schema.find((f) => f.name === name) ?? []);
-    const tsv = buildTsv(tsvColumns(fields, p.aggregation, p.uniqueCount), p.rows);
+    const tsv = buildTsv(tsvColumns(fields, p.aggregation, p.uniqueCount, p.sources), p.rows);
     const count = `${p.rows.length} ${p.rows.length === 1 ? 'row' : 'rows'}`;
     return copyOut(tsv, (ok) => ({
       message: !ok ? 'Could not copy. Copy the data by hand' : p.hasMore ? `Copied the first ${count}. ${p.charts ? 'Switch to Table and load more' : 'Load more'} to copy more.` : `Copied ${count}`,

@@ -1,6 +1,6 @@
 import type { JoinedSource } from '../api/blendable';
 import type { Field } from '../model/types';
-import { withoutPaths, planAddAt, planRejoin, defaultJoinFields, fieldsFor, inUsePaths, isIdField, joinedMartIds, planClick, planMakeMain, shortestSource, sourceOfMart, withoutMart, type PlanEnv } from './join-plan';
+import { UNIQUE_SHOWN, leaveAll, withoutPaths, planAddAt, planRejoin, defaultJoinFields, fieldsFor, inUsePaths, isIdField, joinedMartIds, planClick, planMakeMain, shortestSource, sourceOfMart, withoutMart, type PlanEnv } from './join-plan';
 import type { GridState } from './store';
 
 const f = (name: string, category: Field['category'], martId: string): Field => ({ name, alias: null, type: 'STRING', category, description: null, isPrimaryKey: false, joined: { martId, label: martId, aliasPath: martId, originalName: name.slice(martId.length + 2) } });
@@ -806,5 +806,82 @@ describe('joined marts kept with no column (empty paths)', () => {
     const plan = planMakeMain(env(grids, 'orders'), 'customers');
     expect(plan.grids.customers!.emptyPaths).toEqual(['stores']);
     expect(plan.grids.customers!.filters).toEqual({ stores__city: eq });
+  });
+});
+
+describe('the Unique Count default only where the grid can be grouped', () => {
+  const sources = ordersSources.map((s) => (s.aliasPath === 'customers' ? counted(s) : s));
+  const mainField = (name: string, category: Field['category']): Field => ({ name, alias: null, type: 'STRING', category, description: null, isPrimaryKey: false });
+  const own = [mainField('id', 'string'), mainField('tags', 'other')];
+
+  test('a plain grid with a column that cannot be grouped gets no Unique Count: its first metric, else a bare empty path', () => {
+    const out = planAddAt(g(['id', 'tags']), sources, 'customers', undefined, null, own);
+    expect(out.uniqueCount).toBeUndefined();
+    expect(out.columns).toEqual(['id', 'tags']);
+    expect(out.emptyPaths).toEqual(['customers']);
+    const withMetric = ordersSources.map((s) => (s.aliasPath === 'products' ? counted(s) : s));
+    const metric = planAddAt(g(['id', 'tags']), withMetric, 'products', undefined, null, own);
+    expect(metric.uniqueCount).toBeUndefined();
+    expect(metric.columns).toEqual(['id', 'tags', 'products__price']);
+  });
+
+  test('the same grid with columns that can be grouped, or fields not known, still gets it', () => {
+    expect(planAddAt(g(['id']), sources, 'customers', undefined, null, own).uniqueCount).toEqual(['customers']);
+    expect(planAddAt(g(['id', 'tags']), sources, 'customers').uniqueCount).toEqual(['customers']);
+  });
+
+  test('a grid that is grouped already takes the count whatever it shows', () => {
+    const grouped = g(['id', 'tags'], { uniqueCount: [''], emptyPaths: [] });
+    expect(planAddAt(grouped, sources, 'customers', undefined, null, own).uniqueCount).toEqual(['', 'customers']);
+  });
+
+  test('a click plans it with the main mart\'s own fields from the env', () => {
+    const e = { ...env({ orders: g(['id', 'tags']) }, 'orders'), sourcesOf: () => sources, ownFields: () => own };
+    expect(planClick(e, 'customers').grids.orders!.uniqueCount).toBeUndefined();
+  });
+});
+
+test('a fallback metric shown earlier gets its function when a later add groups the grid', () => {
+  const sources = ordersSources.map((s) => (s.aliasPath === 'customers' ? counted(s) : s));
+  const out = planAddAt(g(['id', 'products__price']), sources, 'customers');
+  expect(out.uniqueCount).toEqual(['customers']);
+  expect(out.aggregations).toEqual([{ column: 'products__price', function: 'SUM' }]);
+  // A grid that is grouped already is left as it was.
+  const grouped = g(['id', 'products__price'], { uniqueCount: [''], aggregations: [{ column: 'products__price', function: 'AVG' }] });
+  expect(planAddAt(grouped, sources, 'customers').aggregations).toEqual([{ column: 'products__price', function: 'AVG' }]);
+});
+
+describe('a mart added back shows its Unique Count again', () => {
+  const sources = ordersSources.map((s) => (s.aliasPath === 'customers' ? counted(s) : s));
+  const withShown = (e: PlanEnv, shown: Record<string, string[]>): PlanEnv => ({ ...e, sourcesOf: () => sources, lastShownOf: (id) => shown[id] ?? null, ownNames: () => [] });
+
+  test('a mart removed with columns and its count remembers both; one removed with its count alone remembers just that', () => {
+    const both = planClick(withShown(env({ orders: g(['id', 'customers__email'], { uniqueCount: ['customers'] }) }, 'orders'), {}), 'customers');
+    expect(both.remember).toEqual([{ martId: 'customers', fields: ['email', UNIQUE_SHOWN] }]);
+    const alone = planClick(withShown(env({ orders: g(['id'], { emptyPaths: ['customers'], uniqueCount: ['customers'] }) }, 'orders'), {}), 'customers');
+    expect(alone.remember).toEqual([{ martId: 'customers', fields: [UNIQUE_SHOWN] }]);
+    const plain = planClick(withShown(env({ orders: g(['id', 'customers__email']) }, 'orders'), {}), 'customers');
+    expect(plain.remember).toEqual([{ martId: 'customers', fields: ['email'] }]);
+  });
+
+  test('leaving the grid remembers the count of a mart with columns and of one with none', () => {
+    const grid = g(['id', 'customers__email'], { uniqueCount: ['customers', 'stores'], emptyPaths: ['stores'] });
+    const withStores = ordersSources.map((s) => (s.aliasPath === 'customers' || s.aliasPath === 'stores' ? counted(s) : s));
+    expect(leaveAll('orders', withStores, grid)).toEqual([{ martId: 'orders', fields: ['id'] }, { martId: 'customers', fields: ['email', UNIQUE_SHOWN] }, { martId: 'stores', fields: [UNIQUE_SHOWN] }]);
+  });
+
+  test('adding it back restores the columns it showed and the count', () => {
+    const e = withShown(env({ orders: g(['id']) }, 'orders'), { customers: ['email', UNIQUE_SHOWN] });
+    expect(planClick(e, 'customers').grids.orders).toMatchObject({ columns: ['id', 'customers__email'], uniqueCount: ['customers'] });
+  });
+
+  test('a count-only exit wins over an older pick or field list', () => {
+    const e = withShown({ ...env({ orders: g(['id']) }, 'orders'), picksOf: () => ({ customers: ['customers__city'] }) }, { customers: [UNIQUE_SHOWN] });
+    expect(planClick(e, 'customers').grids.orders).toMatchObject({ columns: ['id'], emptyPaths: ['customers'], uniqueCount: ['customers'] });
+  });
+
+  test('an old memory with no marker comes back as before, with no count', () => {
+    const e = withShown(env({ orders: g(['id']) }, 'orders'), { customers: ['email'] });
+    expect(planClick(e, 'customers').grids.orders!.uniqueCount).toBeUndefined();
   });
 });

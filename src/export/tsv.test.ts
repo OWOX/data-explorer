@@ -155,3 +155,12 @@ test('copySafe guards a formula start hidden behind quotes or whitespace, which 
   expect(copySafe('-1,223.5')).toBe('-1,223.5');
   expect(copySafe('"Quoted" name: 5 (1%)')).toBe('"Quoted" name: 5 (1%)');
 });
+
+test('a joined mart kept with no column copies its Unique Count alone, after the others, and the main mart\'s leads', () => {
+  const sources = [{ aliasPath: 'customers', martId: 'customers', label: 'Customers' }];
+  const columns = tsvColumns([f('status')], undefined, ['', 'customers'], sources);
+  expect(columns.map((c) => c.key)).toEqual(['status', 'Unique Count', 'customers__unique_count']);
+  expect(columns.map((c) => c.title)).toEqual(['status', 'Unique Count', 'Customers · Unique Count']);
+  const noMainColumn = tsvColumns([f('customers__city', { joined: { martId: 'customers', label: 'Customers', aliasPath: 'customers' } })], undefined, ['', 'customers'], sources);
+  expect(noMainColumn.map((c) => c.key)).toEqual(['Unique Count', 'customers__city', 'customers__unique_count']);
+});

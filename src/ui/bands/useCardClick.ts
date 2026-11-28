@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { withJoined, type JoinedSource } from '../../api/blendable';
 import type { Picks } from '../../api/grid-columns';
 import { PAGE_SIZE } from '../../config';
-import { joinedMartIds, ownNamesIn, planAddAt, planClick, planMakeMain, planRejoin, withoutPaths } from '../../state/join-plan';
+import { joinedMartIds, planAddAt, planClick, planMakeMain, planRejoin, shownOfMart, withoutPaths } from '../../state/join-plan';
 import { reducer, sourceOfModel, useServices, useStore, type Action, type GridState, type State } from '../../state/store';
 import type { Model } from '../../model/types';
 import { pruneGrid } from '../../state/view-link-resolve';
@@ -123,7 +123,7 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
       columnStore.save(main, next.columns);
       for (const martId of martIds) {
         // Only what the removed paths showed: the same mart may stay joined at another path.
-        const fields = ownNamesIn(g.columns, sourcesNow.filter((s) => options.removePaths!.includes(s.aliasPath)), martId);
+        const fields = shownOfMart(g.columns, g.uniqueCount, sourcesNow.filter((s) => options.removePaths!.includes(s.aliasPath)), martId);
         if (fields.length > 0) columnStore.saveLastShown(martId, fields);
       }
       await rendered(wait);
@@ -137,7 +137,7 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
       if (options.addAt !== undefined) {
         // Only the clicked mart gets columns: the marts on the way stay joined through its alias path.
         const martId = sourcesNow.find((s) => s.aliasPath === options.addAt)?.martId;
-        if (martId !== undefined) next = planAddAt(next, sourcesNow, options.addAt, picks.get(main)?.[martId], columnStore.lastShown(martId));
+        if (martId !== undefined) next = planAddAt(next, sourcesNow, options.addAt, picks.get(main)?.[martId], columnStore.lastShown(martId), schemas.peek(main) ?? []);
       } else next = planRejoin(g, sourcesNow, options.moves!, own);
       if (next === g) { await rendered(NOTHING_TO_DRAW_MS); return; }
       const wait = step({ type: 'setMarts', selection: now.selection, grids: { [main]: next } });
@@ -154,6 +154,7 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
       picksOf: (martId) => picks.get(martId) ?? {},
       lastShownOf: (martId) => columnStore.lastShown(martId),
       ownNames: (martId) => (schemas.peek(martId) ?? []).map((f) => f.name),
+      ownFields: (martId) => schemas.peek(martId) ?? [],
     }, id);
     if (plan.noop) { await rendered(NOTHING_TO_DRAW_MS); return; }
     const wait = Object.keys(plan.grids).length === 0 && plan.selection.martId && !plan.selection.cleared

@@ -82,10 +82,10 @@ test('the × on a joined card takes its columns out, and selecting it again brin
   expect(title()).toBe('Orders');
   expect(card('Customers')).toHaveAttribute('aria-pressed', 'false');
   await click('Customers');
-  // It comes back with what it showed: email alone, and no Unique Count (that is only the default of a mart with no memory).
-  await waitFor(() => expect(headers()).toHaveLength(6));
-  expect(within(data()).getAllByRole('button', { name: /^Sort by Customers · / })).toHaveLength(1);
-  await waitFor(() => expect(t.puts.some((p) => p.id === 'customers' && JSON.stringify(p.doc).includes('"lastShown":["email"]'))).toBe(true), { timeout: 3000 });
+  // It comes back with what it showed: email and its Unique Count.
+  await waitFor(() => expect(headers()).toHaveLength(7));
+  expect(within(data()).getAllByRole('button', { name: /^Sort by Customers · / })).toHaveLength(2);
+  await waitFor(() => expect(t.puts.some((p) => p.id === 'customers' && JSON.stringify(p.doc).includes('"lastShown":["email","$unique_count"]'))).toBe(true), { timeout: 3000 });
 });
 
 test('a joined mart\'s filters and sorts leave with it', async () => {
@@ -294,7 +294,7 @@ test('what a removed mart showed is saved exactly: the fields, in the order show
   await closeConfigMenu();
   await remove('Customers');
   await waitFor(() => expect(headers()).toHaveLength(5));
-  await waitFor(() => expect(t.puts.some((p) => p.id === 'customers' && JSON.stringify(p.doc).includes('"lastShown":["email"]'))).toBe(true), { timeout: 3000 });
+  await waitFor(() => expect(t.puts.some((p) => p.id === 'customers' && JSON.stringify(p.doc).includes('"lastShown":["email","$unique_count"]'))).toBe(true), { timeout: 3000 });
 });
 
 const groupRow = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup');
@@ -408,7 +408,7 @@ test('a mart that leaves the grid remembers its own field names in its own grid-
   // Customers leaves the grid
   await remove('Customers');
   await waitFor(() => expect(title()).toBe('Orders'));
-  await waitFor(() => expect(t.puts.some((p) => p.id === 'customers' && JSON.stringify(p.doc).includes('"lastShown":["email"]'))).toBe(true), { timeout: 3000 });
+  await waitFor(() => expect(t.puts.some((p) => p.id === 'customers' && JSON.stringify(p.doc).includes('"lastShown":["email","$unique_count"]'))).toBe(true), { timeout: 3000 });
 });
 
 test('a double activation of Remove from report takes the mart out once and never puts it back', async () => {

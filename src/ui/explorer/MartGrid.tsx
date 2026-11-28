@@ -10,7 +10,7 @@ import { withJoined, type JoinedSource } from '../../api/blendable';
 import { applyDraft, draftOf, isCalculatedMetric, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, outputType, sanitizeAggregation, ungroupableColumn, type Aggregation, type Grouping, type AggregationDraft, type Output } from '../../model/aggregation';
 import { columnTitle } from '../../model/fieldLabel';
 import { keepEmpty } from '../../model/empty-paths';
-import { dropUniqueSorts, keepUnique, uniqueField, uniqueKey, uniquePathsOf, withUniqueAfter } from '../../model/unique-count';
+import { dropUniqueSorts, keepUnique, uniqueField, uniqueKey, uniquePathsOf, withUniqueColumns } from '../../model/unique-count';
 import { ruleNewColumns } from '../../charts/fields';
 import { chartSetsOf, usesKeys } from '../../charts/chartSets';
 import { joinGrainOf } from '../../charts/answers';
@@ -29,7 +29,7 @@ import { useWidth } from '../../charts/useWidth';
 import { cycleSort, defaultSort, sortsOnColumns, type SortDirection, type SortKey } from '../../model/sort';
 import { groupMap, moveColumn, moveColumnBy, orderColumns, ownInSchemaOrder } from '../../state/column-order';
 import { buildJoinTree, joinableUnder } from '../../state/join-tree';
-import { inUsePaths, joinedMartIds, ownNamesIn, pathTitle } from '../../state/join-plan';
+import { inUsePaths, joinedMartIds, pathTitle, shownOfMart } from '../../state/join-plan';
 import type { Field, Model, Schema } from '../../model/types';
 import { hasPrimaryKey, primaryKeys } from '../../records/relationships';
 import type { Row } from '../../sdk/types';
@@ -426,12 +426,8 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
     const base = outputsOf(wanted.map((f) => f.name), aggNow);
     if (!ucNow.length) return base;
     const make = (path: string): Output => ({ key: uniqueKey(path), column: uniqueKey(path), unique: path, sortable: true });
-    const after = withUniqueAfter(base, (o) => byName.get(o.column)?.joined?.aliasPath ?? '', ucNow, make);
-    // A joined mart kept with no column shows its Unique Count alone, after the marts with columns.
-    const withColumns = new Set(base.map((o) => byName.get(o.column)?.joined?.aliasPath ?? ''));
-    const alone = ucNow.filter((p) => p !== '' && !withColumns.has(p)).map(make);
-    // The main mart's Unique Count still groups the rows when the mart has no column: it leads, so it is never hidden.
-    return ucNow.includes('') && !base.some((o) => !byName.get(o.column)?.joined) ? [make(''), ...after, ...alone] : [...after, ...alone];
+    // A joined mart kept with no column shows its Unique Count alone, after the marts with columns; the main mart's leads when it has no column.
+    return withUniqueColumns(base, (o) => byName.get(o.column)?.joined?.aliasPath ?? '', ucNow, make);
   }, [wanted, aggNow, ucNow, byName]);
   // The stand-in fields of the Unique Count columns, by row key.
   const uniqueFields = useMemo(() => new Map(ucNow.map((p) => { const src = sources.find((x) => x.aliasPath === p); return [uniqueKey(p), uniqueField(p, src && { martId: src.martId, label: src.label })] as const; })), [ucNow, sources]);
@@ -502,7 +498,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
     // A joined mart that has no column left remembers what it was showing, as its own field names. No empty pick is saved: it would wipe the pick it came with.
     const left = joinedMartIds(visible, sources).filter((m) => !joinedMartIds(cols, sources).includes(m));
     columnStore.save(martId, cols);
-    for (const m of left) columnStore.saveLastShown(m, ownNamesIn(visible, sources, m));
+    for (const m of left) columnStore.saveLastShown(m, shownOfMart(visible, uc, sources, m));
     return !sameList(cols, visible);
   }, [shownNow, sources, markEdit, agg, applyAgg, visible, columnStore, chartSettings, dispatch, martId, setVisible, setOwn, setUc, setEp, sourcesRead, uc, ep, schema, linkCharts, storeCharts]);
   // A moved column keeps its sorts, filters and functions: only the order changes, and it is one Undo step. The cell selection is dropped (its columns moved).
@@ -754,7 +750,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   const havingSet = keysRead.kind !== 'off';
   // The marts the report keeps with no column that have a usable key: their count rides on the scorecard read, while a rule applies, in Table and in Charts alike.
   // The main mart with no column counts too (as '', first) when it has a key: no scorecard of it, but its match badge needs the count.
-  const keptUnique = useMemo(() => (applies && !havingSet ? [...(mainEmpty && mainKey ? [''] : []), ...pathMarts.filter((m) => m.empty && sources.some((x) => x.aliasPath === m.path && x.uniqueCount)).map((m) => m.path)] : []), [applies, havingSet, mainEmpty, mainKey, pathMarts, sources]);
+  const keptUnique = useMemo(() => (applies && !havingSet ? [...(mainEmpty && mainKey ? [''] : []), ...pathMarts.filter((m) => m.empty && !groups.some((g) => g.path === m.path) && sources.some((x) => x.aliasPath === m.path && x.uniqueCount)).map((m) => m.path)] : []), [applies, havingSet, mainEmpty, mainKey, pathMarts, groups, sources]);
   // Charts reads when a shown field is a number or a key, or when the empty main mart's count rides on the read (its card shows the badge): the same read ChartsBody shares.
   const chartable = useMemo(() => keptUnique.includes('') || !scoreFields.marts.every((m) => m.metrics.length === 0 && !m.hasPk), [scoreFields, keptUnique]);
   // The same query as the scorecards of Charts (one builder, one key): a read that Charts asks is shared, and Table's read is served to Charts from the cache.

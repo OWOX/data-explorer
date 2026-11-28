@@ -175,6 +175,17 @@ describe('reportToGrid', () => {
       expect(unkeyed.skipped.uniqueCount).toBe(true);
     });
 
+    test('a joined mart\'s count with no column of its mart loads as a mart kept with no column', () => {
+      const r = reportToGrid(rep({ columnConfig: ['name', 'amount'], uniqueCountConfig: ['customers'] }), keyed, keyed);
+      expect(r.grid?.uniqueCount).toEqual(['customers']);
+      expect(r.grid?.emptyPaths).toEqual(['customers']);
+      expect(r.skipped).toEqual(none);
+      // The main mart's count and a path the schema does not offer are not kept empty.
+      const other = reportToGrid(rep({ columnConfig: ['name', 'amount'], uniqueCountConfig: ['', 'campaigns'] }), keyed, keyed);
+      expect(other.grid?.emptyPaths).toBeUndefined();
+      expect(load(['customers']).grid?.emptyPaths).toBeUndefined();
+    });
+
     test('a sort on the count column is kept with the count', () => {
       expect(load(true, { sortConfig: [{ column: 'Unique Count', direction: 'desc' }] }).grid?.sorts).toEqual([{ field: 'Unique Count', direction: 'desc' }]);
     });

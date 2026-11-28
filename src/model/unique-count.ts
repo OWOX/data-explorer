@@ -38,6 +38,18 @@ export function withUniqueAfter<T>(items: readonly T[], pathOf: (item: T) => str
   });
 }
 
+/**
+ * The grid's items with every Unique Count in place: after its mart's last item (`withUniqueAfter`), a joined mart kept with no item alone at the end, and the main mart's, with none of its own items, first (it still groups the rows, so it is never hidden).
+ * One rule for the grid and for the clipboard copy. `last` is undefined for a count with no item of its mart.
+ */
+export function withUniqueColumns<T>(items: readonly T[], pathOf: (item: T) => string, paths: readonly string[], make: (path: string, last: T | undefined) => T): T[] {
+  if (!paths.length) return [...items];
+  const after = withUniqueAfter(items, pathOf, paths, (path, last) => make(path, last));
+  const has = new Set(items.map(pathOf));
+  const alone = paths.filter((p) => p !== '' && !has.has(p)).map((p) => make(p, undefined));
+  return paths.includes('') && !items.some((i) => pathOf(i) === '') ? [make('', undefined), ...after, ...alone] : [...after, ...alone];
+}
+
 /** The sorts without the ones on the row keys of `paths`. The same list when none is; a list emptied this way is `null`, as a hidden column's sorts are (the default order returns). */
 export function dropUniqueSorts(sorts: SortKey[] | null, paths: readonly string[]): SortKey[] | null {
   if (!sorts || !paths.length) return sorts;

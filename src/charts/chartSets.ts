@@ -16,9 +16,12 @@ export type SetMart = { path: string; title: string; icon?: string | null };
 export function chartSetsOf(schema: Schema, shown: string[], agg: Aggregation, martId: string, groups: SetMart[], reportGroups: SetMart[], pathMarts: SetMart[], sources: JoinedSource[]): { cf: ChartFields; chart: ChartFields } {
   const build = (on: string[], marts: SetMart[], counted: JoinedSource[]) => chartFields(schema, on, agg, martId, marts.map((g) => g.path), new Set(counted.filter((x) => x.uniqueCount).map((x) => x.aliasPath)), Object.fromEntries(marts.map((g) => [g.path, g.title])), Object.fromEntries(sources.map((x) => [x.aliasPath, x.mainGrainCollapse])), Object.fromEntries(marts.map((g) => [g.path, g.icon])));
   // The report's groups come first, so a chart mart keeps its group's index and its Count Unique id. A path mart offers no Count Unique: a mart needs a column to count it.
-  const onPath = new Set(pathMarts.map((m) => m.path));
+  // A mart kept with only its Unique Count is a group already (its count column carries its path): it is listed once, as the group, with its Count Unique.
+  const grouped = new Set([...groups, ...reportGroups].map((g) => g.path));
+  const extra = pathMarts.filter((m) => !grouped.has(m.path));
+  const onPath = new Set(extra.map((m) => m.path));
   const own = build(shown, groups, sources);
-  return { cf: own, chart: { ...build(schema.map((f) => f.name), [...reportGroups, ...pathMarts], sources.filter((x) => !onPath.has(x.aliasPath))), shown: own } };
+  return { cf: own, chart: { ...build(schema.map((f) => f.name), [...reportGroups, ...extra], sources.filter((x) => !onPath.has(x.aliasPath))), shown: own } };
 }
 
 /**
