@@ -16,10 +16,11 @@ export function useRememberLeaving(): (nextMartId: string | null) => void {
   return useCallback((nextMartId) => {
     if (!main || main === nextMartId) return;
     void (async () => {
-      const columns = grid && grid.columns.length > 0 ? grid.columns : await columnStore.load(main);
+      const shown = grid && grid.columns.length > 0 ? grid : undefined;
+      const columns = shown ? shown.columns : await columnStore.load(main);
       if (!columns || columns.length === 0) return;
       const sources = await blendable.get(main);
-      const left = leaveAll(main, sources, { columns, filters: {}, sorts: null, limit: PAGE_SIZE });
+      const left = leaveAll(main, sources, { columns, filters: {}, sorts: null, limit: PAGE_SIZE, uniqueCount: shown?.uniqueCount, emptyPaths: shown?.emptyPaths });
       for (const r of left) columnStore.saveLastShown(r.martId, r.fields);
     })().catch(() => undefined);
   }, [main, grid, blendable, columnStore]);

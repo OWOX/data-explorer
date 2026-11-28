@@ -311,7 +311,8 @@ export function planClick(env: PlanEnv, id: string): Plan {
     for (const r of rest) {
       if (!isJoinable(nextSources, r)) {
         // Nothing shown is nothing to remember: an empty entry would wipe what the mart last showed.
-        if (!stayEmpty.has(r)) remember.push({ martId: r, fields: ownNamesIn(grid.columns, sources, r) });
+        const shown = shownOfMart(grid.columns, grid.uniqueCount, sources, r);
+        if (shown.length > 0) remember.push({ martId: r, fields: shown });
         continue;
       }
       if (have.has(r)) continue;
@@ -331,13 +332,14 @@ export function planClick(env: PlanEnv, id: string): Plan {
     const shownMarts = joinedMartIds(columns, nextSources);
     const emptyPaths = emptyAfter(nextSources, columns, [...own.filter((p) => { const m = nextSources.find((x) => x.aliasPath === p)?.martId ?? ''; return have.has(m) || !shownMarts.includes(m); }), ...carried]);
     const changed = columns.length !== nextGrid.columns.length || columns.some((c, i) => c !== nextGrid.columns[i]) || !sameList(emptyPaths, nextGrid.emptyPaths ?? []);
-    // A Unique Count of a mart that stays empty goes with it.
-    const uc = [...new Set([...(nextGrid.uniqueCount ?? []), ...carryUnique(grid, nextSources, moved).filter((p) => emptyPaths.includes(p))])];
-    const ucChanged = !sameList(uc, nextGrid.uniqueCount ?? []);
+    // A Unique Count of a mart that stays empty goes with it, and only where the new grid can be grouped by it.
     const sorts = changed && nextGrid.sorts ? sortsOnColumns(nextGrid.sorts, columns) : nextGrid.sorts;
+    const base: GridState = { ...nextGrid, columns, emptyPaths: emptyPaths.length ? emptyPaths : undefined, sorts: keptSorts(nextGrid.sorts, sorts ?? []) };
+    const built = withCarriedUnique(base, nextSources, carryUnique(grid, nextSources, moved).filter((p) => emptyPaths.includes(p)), env.ownFields?.(next) ?? []);
+    const ucChanged = !sameList(built.uniqueCount ?? [], nextGrid.uniqueCount ?? []);
     return {
       selection: { sourceKey: env.sourceKeyFor(next), martId: next, record: null },
-      grids: changed || ucChanged ? { [next]: { ...nextGrid, columns, emptyPaths: emptyPaths.length ? emptyPaths : undefined, uniqueCount: uc.length ? uc : undefined, sorts: keptSorts(nextGrid.sorts, sorts ?? []) } } : {},
+      grids: changed || ucChanged ? { [next]: built } : {},
       saves: changed || ucChanged ? [{ martId: next, columns }] : [],
       remember,
     };
@@ -403,11 +405,11 @@ export function planMakeMain(env: PlanEnv, id: string): Plan {
         carried.push(to);
         const from = (grid.emptyPaths ?? []).find((p) => sources.find((x) => x.aliasPath === p)?.martId === r);
         if (from !== undefined) moved.push([from, to]);
-      }
+      } else if (shownOfMart([], grid.uniqueCount, sources, r).length > 0) remember.push({ martId: r, fields: [UNIQUE_SHOWN] });
       continue;
     }
     if (isJoinable(nextSources, r)) add(r, shown);
-    else remember.push({ martId: r, fields: shown });
+    else remember.push({ martId: r, fields: shownOfMart(grid.columns, grid.uniqueCount, sources, r) });
   }
   columns = orderColumns(columns, nextSources, env.ownColumns(id));
   // Only the marts the report had: the new main's old grid is not on screen.
@@ -415,7 +417,6 @@ export function planMakeMain(env: PlanEnv, id: string): Plan {
   const { aggregation, ...rules } = refitRules(nextGrid, columns);
   // A Unique Count of a mart kept with no column goes with it.
   const carriedUnique = carryUnique(grid, nextSources, moved).filter((p) => emptyPaths.includes(p));
-  const uniqueCount = [...new Set([...(rules.uniqueCount ?? []), ...carriedUnique])];
   const onGrid = inUsePaths(columns, nextSources, emptyPaths);
   const next: GridState = {
     ...nextGrid,
@@ -425,10 +426,11 @@ export function planMakeMain(env: PlanEnv, id: string): Plan {
     // A slice does not need its column on screen: it stays while its field is still a joined field of the new main.
     slices: keepSlices(nextGrid.slices, (k) => nextSources.some((x) => x.fields.some((fl) => fl.name === k))),
     ...rules,
-    uniqueCount: uniqueCount.length ? uniqueCount : undefined,
+    uniqueCount: rules.uniqueCount?.length ? rules.uniqueCount : undefined,
     emptyPaths: emptyPaths.length ? emptyPaths : undefined,
   };
-  return { selection: { sourceKey: env.sourceKeyFor(id), martId: id, record: null }, grids: { [id]: next }, saves: [{ martId: id, columns }], remember };
+  const built = withCarriedUnique(next, nextSources, carriedUnique, env.ownFields?.(id) ?? []);
+  return { selection: { sourceKey: env.sourceKeyFor(id), martId: id, record: null }, grids: { [id]: built }, saves: [{ martId: id, columns }], remember };
 }
 
 /** The first field of a joined mart that is a metric: a number that is not an ID and takes a function. */
@@ -448,12 +450,14 @@ const withUnique = (grid: GridState, sources: JoinedSource[], aliasPath: string,
   if (isGrouped({ aggregations: grid.aggregations ?? [], dateTrunc: grid.dateTrunc ?? [], uniqueCount: grid.uniqueCount })) return next;
   const by = new Map([...own, ...sources.flatMap((s) => s.fields)].map((f) => [f.name, f] as const));
   const shown = grid.columns.flatMap((c) => by.get(c) ?? []);
-  const ruled = ruleNewColumns({ aggregations: grid.aggregations ?? [], dateTrunc: grid.dateTrunc ?? [], uniqueCount }, shown.filter((f) => f.joined));
+  const ruled = ruleNewColumns({ aggregations: grid.aggregations ?? [], dateTrunc: grid.dateTrunc ?? [], uniqueCount }, shown.filter((f) => f.joined && f.category === 'number' && !isIdField(f) && !f.isCalculated));
   if (ungroupableColumn(shown, { ...ruled, uniqueCount })) return null;
   if (ruled.aggregations.length) next = { ...next, aggregations: ruled.aggregations };
-  if (ruled.dateTrunc.length) next = { ...next, dateTrunc: ruled.dateTrunc };
   return next;
 };
+
+/** The grid with the Unique Counts carried to a new main: each is added where the grid can be grouped by it, and dropped where it cannot. */
+const withCarriedUnique = (grid: GridState, sources: JoinedSource[], paths: readonly string[], own: readonly Field[]): GridState => paths.reduce((g, p) => withUnique(g, sources, p, own) ?? g, grid);
 
 /** The grid with the mart kept in the report with no column but its Unique Count; null when the grid cannot be grouped. */
 const withUniqueOnly = (grid: GridState, sources: JoinedSource[], aliasPath: string, own: readonly Field[]): GridState | null => withUnique(withEmptyPath(grid, aliasPath), sources, aliasPath, own);

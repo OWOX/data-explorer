@@ -292,9 +292,10 @@ test('a saved list with joined columns and none of the main mart\'s own stays wi
   // An untick is saved after the pause: no saved column list holds a column of the main mart (the restore did not add one back).
   await openPicker('Customers');
   await userEvent.click(await screen.findByLabelText('email'));
-  await waitFor(() => expect(t.put).toHaveBeenCalled(), { timeout: SAVE_DEBOUNCE_MS + 1500 });
-  const saved = t.put.mock.calls.flatMap(([id, d]) => (id === 'orders' ? ['orders'] : (d as { columns: string[] }).columns));
-  expect(saved.filter((c) => ['orders', 'id', 'status', 'amount'].includes(c))).toEqual([]);
+  // The main mart's own list is saved after the pause; other marts' writes (what a removed mart last showed) come first and are not the list.
+  const ordersLists = () => t.put.mock.calls.filter(([id]) => id === 'orders').map(([, d]) => (d as { columns: string[] }).columns);
+  await waitFor(() => expect(ordersLists().length).toBeGreaterThan(0), { timeout: SAVE_DEBOUNCE_MS + 1500 });
+  expect(ordersLists().flat().filter((c) => ['id', 'status', 'amount'].includes(c))).toEqual([]);
   expect(headers()).toEqual(['SKU']);
 });
 

@@ -4,7 +4,7 @@ import type { Picks } from '../../api/grid-columns';
 import { PAGE_SIZE } from '../../config';
 import { joinedMartIds, planAddAt, planClick, planMakeMain, planRejoin, shownOfMart, withoutPaths } from '../../state/join-plan';
 import { reducer, sourceOfModel, useServices, useStore, type Action, type GridState, type State } from '../../state/store';
-import type { Model } from '../../model/types';
+import type { Field, Model } from '../../model/types';
 import { pruneGrid } from '../../state/view-link-resolve';
 import { defaultColumns } from '../../model/columns';
 import { useLatest } from '../useLatest';
@@ -66,8 +66,10 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
     const sources = new Map<string, JoinedSource[]>();
     const grids = new Map<string, GridState>();
     const picks = new Map<string, Picks>();
+    const schemaOf = new Map<string, Field[]>();
     const load = async (martId: string) => {
       const own = await schemas.get(martId).catch(() => []);
+      schemaOf.set(martId, own);
       // A failed read leaves joined fields unknown, not gone: nothing saved for them is pruned.
       let failed = false;
       const joined = await blendable.get(martId).catch(() => { failed = true; return [] as JoinedSource[]; });
@@ -114,7 +116,7 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
       if (!main) return;
       const sourcesNow = sources.get(main) ?? [];
       const g = fresh(main) ?? { columns: [], filters: {}, sorts: null, limit: PAGE_SIZE };
-      const own = defaultColumns(schemas.peek(main) ?? []);
+      const own = defaultColumns(schemaOf.get(main) ?? schemas.peek(main) ?? []);
       const next = withoutPaths(g, sourcesNow, options.removePaths, own);
       if (next === g) { await rendered(NOTHING_TO_DRAW_MS); return; }
       // Each removed mart is remembered with the own fields it showed, as a click that takes one out does.
@@ -132,12 +134,12 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
     if ((options?.addAt !== undefined || options?.moves) && main) {
       const sourcesNow = sources.get(main) ?? [];
       const g = fresh(main) ?? { columns: [], filters: {}, sorts: null, limit: PAGE_SIZE };
-      const own = defaultColumns(schemas.peek(main) ?? []);
+      const own = defaultColumns(schemaOf.get(main) ?? schemas.peek(main) ?? []);
       let next = g;
       if (options.addAt !== undefined) {
         // Only the clicked mart gets columns: the marts on the way stay joined through its alias path.
         const martId = sourcesNow.find((s) => s.aliasPath === options.addAt)?.martId;
-        if (martId !== undefined) next = planAddAt(next, sourcesNow, options.addAt, picks.get(main)?.[martId], columnStore.lastShown(martId), schemas.peek(main) ?? []);
+        if (martId !== undefined) next = planAddAt(next, sourcesNow, options.addAt, picks.get(main)?.[martId], columnStore.lastShown(martId), schemaOf.get(main) ?? schemas.peek(main) ?? []);
       } else next = planRejoin(g, sourcesNow, options.moves!, own);
       if (next === g) { await rendered(NOTHING_TO_DRAW_MS); return; }
       const wait = step({ type: 'setMarts', selection: now.selection, grids: { [main]: next } });
@@ -150,11 +152,11 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
       sourceKeyFor: (martId) => (now.selection.sourceKey && sourceOf(martId) === now.selection.sourceKey ? now.selection.sourceKey : null),
       sourcesOf: (martId) => sources.get(martId) ?? [],
       gridOf: (martId) => fresh(martId) ?? { columns: [], filters: {}, sorts: null, limit: PAGE_SIZE },
-      ownColumns: (martId) => defaultColumns(schemas.peek(martId) ?? []),
+      ownColumns: (martId) => defaultColumns(schemaOf.get(martId) ?? schemas.peek(martId) ?? []),
       picksOf: (martId) => picks.get(martId) ?? {},
       lastShownOf: (martId) => columnStore.lastShown(martId),
-      ownNames: (martId) => (schemas.peek(martId) ?? []).map((f) => f.name),
-      ownFields: (martId) => schemas.peek(martId) ?? [],
+      ownNames: (martId) => (schemaOf.get(martId) ?? schemas.peek(martId) ?? []).map((f) => f.name),
+      ownFields: (martId) => schemaOf.get(martId) ?? schemas.peek(martId) ?? [],
     }, id);
     if (plan.noop) { await rendered(NOTHING_TO_DRAW_MS); return; }
     const wait = Object.keys(plan.grids).length === 0 && plan.selection.martId && !plan.selection.cleared

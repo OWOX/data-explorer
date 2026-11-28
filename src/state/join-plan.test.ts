@@ -885,3 +885,47 @@ describe('a mart added back shows its Unique Count again', () => {
     expect(planClick(e, 'customers').grids.orders!.uniqueCount).toBeUndefined();
   });
 });
+
+describe('the Unique Count default on the paths that move or remember marts', () => {
+  const countedAll = (list: JoinedSource[], ...paths: string[]) => list.map((x) => (paths.includes(x.aliasPath) ? counted(x) : x));
+  const mainField = (name: string, category: Field['category']): Field => ({ name, alias: null, type: 'STRING', category, description: null, isPrimaryKey: false });
+
+  test('a joined date stays unbucketed when the first count groups the grid', () => {
+    const withDate = ordersSources.map((s) => (s.aliasPath === 'customers' ? counted({ ...s, fields: [...s.fields, f('customers__created', 'date', 'customers')] }) : s));
+    const out = planAddAt(g(['id', 'products__price', 'customers__created']), withDate, 'customers');
+    expect(out.uniqueCount).toEqual(['customers']);
+    expect(out.dateTrunc ?? []).toEqual([]);
+    expect(out.aggregations).toEqual([{ column: 'products__price', function: 'SUM' }]);
+  });
+
+  test('deselecting the main remembers the count of a mart the next main cannot join', () => {
+    const sources = countedAll(ordersSources, 'products');
+    const e = { ...env({ orders: g(['id', 'customers__city', 'products__price'], { uniqueCount: ['products'] }), customers: g(['id']) }, 'orders'), sourcesOf: (id: string) => (id === 'orders' ? sources : customersSources) };
+    expect(planClick(e, 'orders').remember).toContainEqual({ martId: 'products', fields: ['price', UNIQUE_SHOWN] });
+    const alone = { ...env({ orders: g(['id', 'customers__city'], { emptyPaths: ['products'], uniqueCount: ['products'] }), customers: g(['id']) }, 'orders'), sourcesOf: (id: string) => (id === 'orders' ? sources : customersSources) };
+    expect(planClick(alone, 'orders').remember).toContainEqual({ martId: 'products', fields: [UNIQUE_SHOWN] });
+  });
+
+  test('making a mart main remembers the count of a mart it cannot join', () => {
+    const sources = countedAll(ordersSources, 'products');
+    const e = { ...env({ orders: g(['id', 'customers__city', 'products__price'], { uniqueCount: ['products'] }), customers: g(['id']) }, 'orders'), sourcesOf: (id: string) => (id === 'orders' ? sources : customersSources) };
+    expect(planMakeMain(e, 'customers').remember).toContainEqual({ martId: 'products', fields: ['price', UNIQUE_SHOWN] });
+    const alone = { ...env({ orders: g(['id', 'customers__city'], { emptyPaths: ['products'], uniqueCount: ['products'] }), customers: g(['id']) }, 'orders'), sourcesOf: (id: string) => (id === 'orders' ? sources : customersSources) };
+    expect(planMakeMain(alone, 'customers').remember).toContainEqual({ martId: 'products', fields: [UNIQUE_SHOWN] });
+  });
+
+  test('a count carried to a new main whose own column cannot be grouped is dropped', () => {
+    const next = countedAll(customersSources, 'stores');
+    const sourcesOf = (id: string) => (id === 'orders' ? countedAll(ordersSources, 'stores') : next);
+    const ownFields = () => [mainField('id', 'string'), mainField('tags', 'other')];
+    const grids = { orders: g(['id', 'customers__city'], { emptyPaths: ['stores'], uniqueCount: ['stores'] }), customers: g(['id', 'tags']) };
+    const e = { ...env(grids, 'orders'), sourcesOf, ownFields };
+    const deselected = planClick(e, 'orders');
+    expect(deselected.grids.customers?.uniqueCount).toBeUndefined();
+    // Made main, the same count survives where the new main's own columns can be grouped, and is dropped where they cannot.
+    const mm = planMakeMain({ ...e, selection: sel('orders'), sourcesOf }, 'customers');
+    expect(mm.grids.customers?.uniqueCount).toBeUndefined();
+    const ok = planMakeMain({ ...e, selection: sel('orders'), sourcesOf, ownFields: () => [mainField('id', 'string')] }, 'customers');
+    expect(ok.grids.customers?.uniqueCount).toEqual(['stores']);
+  });
+});
