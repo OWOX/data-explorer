@@ -77,10 +77,6 @@ export function fromTraverseFilter(rule: unknown, field: Field): ColumnFilter | 
     return isComplete(listed, field) ? listed : null;
   }
   const op = opFor(rule.operator, field);
-  // A regex came from the backend, which knows its own dialect: it loads as saved, even when JS cannot compile it.
-  if ((op === 'regex' || op === 'not_regex') && operatorsFor(field).some((o) => o.id === op)) {
-    return typeof rule.value === 'string' && rule.value !== '' ? { field: field.name, op, value: rule.value } : null;
-  }
   const def = operatorsFor(field).find((o) => o.id === op);
   if (!def) return null;
   const v = valueFor(def.value, rule.value, field);

@@ -140,20 +140,27 @@ function OperatorForm({ field, value, onApply, onClear, note, values, startOp }:
   };
   /** The zone a loaded stamp carries (`+02:00`, `Z`, `UTC`), which the input cannot show. */
   const zoneOf = (v: unknown) => /\d{2}:\d{2}:\d{2}(?:\.\d+)?( ?(?:Z|UTC|[+-]\d{2}(?::?\d{2})?))$/.exec(String(v ?? ''))?.[1];
-  /** An edited datetime-local value, in the space form with seconds, keeping the zone the loaded value had. */
-  const edited = (old: unknown, raw: string, type: string) => {
-    const z = zoneOf(old);
+  // The zones the editor opened with, held per input: clearing and retyping a value keeps its zone, and a bound with none takes the other's.
+  const [zones, setZones] = useState<Record<string, string | undefined>>(() => {
+    const o = value?.op === op ? value.value : undefined;
+    return typeof o === 'object' && o !== null ? { from: zoneOf((o as { from?: unknown }).from), to: zoneOf((o as { to?: unknown }).to) } : { v: zoneOf(o) };
+  });
+  const zoneFor = (k: 'v' | 'from' | 'to') => zones[k] ?? (k === 'from' ? zones.to : k === 'to' ? zones.from : undefined);
+  /** An edited datetime-local value, in the space form with seconds, keeping the zone the input holds. */
+  const edited = (k: 'v' | 'from' | 'to', raw: string, type: string) => {
+    const z = type === 'datetime-local' ? zoneFor(k) : undefined;
     const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::(\d{2}))?/.exec(raw);
-    return type === 'datetime-local' && z && m ? `${m[1]} ${m[2]}:${m[3] ?? '00'}${z}` : raw;
+    if (z && m && zones[k] === undefined) setZones((p) => ({ ...p, [k]: z }));
+    return z && m ? `${m[1]} ${m[2]}:${m[3] ?? '00'}${z}` : raw;
   };
-  const zoneNote = (v: unknown, type: string) => { const z = type === 'datetime-local' ? zoneOf(v) : undefined; return z ? <span className="text-xs text-muted-foreground whitespace-nowrap" data-testid="zone-note">{z.trim()}</span> : null; };
+  const zoneNote = (k: 'v' | 'from' | 'to', type: string) => { const z = type === 'datetime-local' ? zoneFor(k) : undefined; return z ? <span className="text-xs text-muted-foreground whitespace-nowrap" data-testid="zone-note">{z.trim()}</span> : null; };
   const dateType = field.category === 'time' ? 'time' : isDateTimeField(field) ? 'datetime-local' : 'date';
   // "On" a datetime column is a whole day.
   const valueType = op === 'on' && isDateTimeField(field) ? 'date' : dateType;
 
   return (
     <ActionForm className="dm-filter-form flex flex-col gap-2" onAction={() => { if (isComplete(draft, field)) onApply(draft); }}>
-      <Select aria-label="Operator" value={op} onChange={(e) => { setOp(e.target.value as OpId); setVal(undefined); setBase(null); setOpSeq((n) => n + 1); }}>
+      <Select aria-label="Operator" value={op} onChange={(e) => { setOp(e.target.value as OpId); setVal(undefined); setZones({}); setBase(null); setOpSeq((n) => n + 1); }}>
         {ops.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
       </Select>
       {(def.value === 'text' || (def.value === 'list' && field.category === 'string')) && <ValueInput key={opSeq} op={op} value={String(val ?? '')} onChange={(v, b) => { setVal(v);
@@ -166,8 +173,8 @@ function OperatorForm({ field, value, onApply, onClear, note, values, startOp }:
       )}
       {def.value === 'date' && (
         <div className="flex items-center gap-2">
-          <input aria-label="Value" className={`${input} min-w-0 flex-1`} type={valueType} value={shown(val, valueType)} onChange={(e) => setVal(edited(val, e.target.value, valueType))} />
-          {zoneNote(val, valueType)}
+          <input aria-label="Value" className={`${input} min-w-0 flex-1`} type={valueType} value={shown(val, valueType)} onChange={(e) => setVal(edited('v', e.target.value, valueType))} />
+          {zoneNote('v', valueType)}
         </div>
       )}
       {(def.value === 'number-range' || def.value === 'date-range') && (
@@ -176,8 +183,8 @@ function OperatorForm({ field, value, onApply, onClear, note, values, startOp }:
             <div key={k} className="flex min-w-0 flex-1 basis-40 items-center gap-2">
               <input aria-label={k === 'from' ? 'From' : 'To'} className={`${input} min-w-0 flex-1`} type={def.value === 'number-range' ? 'number' : dateType}
                 value={def.value === 'date-range' ? shown(range[k], dateType) : (range[k] ?? '')}
-                onChange={(e) => setVal({ ...range, [k]: def.value === 'date-range' ? edited(range[k], e.target.value, dateType) : e.target.value })} />
-              {def.value === 'date-range' && zoneNote(range[k], dateType)}
+                onChange={(e) => setVal({ ...range, [k]: def.value === 'date-range' ? edited(k, e.target.value, dateType) : e.target.value })} />
+              {def.value === 'date-range' && zoneNote(k, dateType)}
             </div>
           ))}
         </div>

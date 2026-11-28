@@ -66,11 +66,12 @@ describe('round trip with buildReportPayload', () => {
 
 describe('fromTraverseFilter', () => {
   test('a timestamp list with fractions or zones, and a (?i) regex, load', () => {
-    const v = ['2024-01-01 10:00:00.123', '2024-01-01T10:00:00Z', '2024-01-01 10:00:00+02:00'];
+    const v = ['2024-01-01 10:00:00.123', '2024-01-01T10:00:00Z', '2024-01-01 10:00:00+00:00'];
     expect(fromTraverseFilter({ column: 'stamp', operator: 'in', value: v }, stamp)).toEqual({ field: 'stamp', op: 'in', value: v.join(', ') });
     expect(fromTraverseFilter({ column: 'name', operator: 'regex', value: '(?i)foo' }, name)).toEqual({ field: 'name', op: 'regex', value: '(?i)foo' });
-    expect(fromTraverseFilter({ column: 'name', operator: 'not_regex', value: '(' }, name)).toEqual({ field: 'name', op: 'not_regex', value: '(' });
-    expect(fromTraverseFilter({ column: 'name', operator: 'regex', value: '' }, name)).toBeNull();
+    expect(fromTraverseFilter({ column: 'name', operator: 'regex', value: '(?i:foo)' }, name)).toBeNull();
+    expect(fromTraverseFilter({ column: 'name', operator: 'regex', value: '(?U)a' }, name)).toBeNull();
+    expect(fromTraverseFilter({ column: 'name', operator: 'not_regex', value: '(' }, name)).toBeNull();
   });
   test('in and not_in stay in / not_in; a text value with a comma or a quote is written in quotes', () => {
     expect(fromTraverseFilter({ column: 'name', operator: 'in', value: ['a', 'b'] }, name)).toEqual({ field: 'name', op: 'in', value: 'a, b' });
@@ -234,6 +235,12 @@ describe('reportToGrid', () => {
     ] }), schema, schema);
     expect(r.grid?.filters.name).toEqual({ field: 'name', op: 'contains', value: 'a' });
     expect(r.skipped.filters).toBe(1);
+  });
+
+  test('a (?i) regex loads and is applied', () => {
+    const r = reportToGrid(rep({ filterConfig: [{ column: 'name', operator: 'regex', value: '(?i)foo' }] }), schema, schema);
+    expect(r.grid?.filters.name).toEqual({ field: 'name', op: 'regex', value: '(?i)foo' });
+    expect(r.skipped.filters).toBe(0);
   });
 
   test('a filter that cannot be read or sits on a missing field counts', () => {

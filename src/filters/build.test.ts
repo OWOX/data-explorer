@@ -181,8 +181,8 @@ describe('is any of / is none of', () => {
 });
 
 describe('stamps and regex', () => {
-  const stamps = ['2024-01-01 10:00:00.123', '2024-01-01T10:00:00Z', '2024-01-01 10:00:00+02:00', '2024-01-01 10:00:00+0200', '2024-01-01 10:00:00 UTC', '2024-01-01 10:00:00.123456Z'];
-  test('list entries on a timestamp accept a fraction and a zone, and build passes them through untouched', () => {
+  const stamps = ['2024-01-01 10:00:00.123', '2024-01-01T10:00:00Z', '2024-01-01 10:00:00+00:00', '2024-01-01 10:00:00 UTC', '2024-01-01 10:00:00.123456Z'];
+  test('list entries on a TIMESTAMP accept a fraction and a UTC zone, and build only swaps the T', () => {
     for (const s of stamps) {
       expect(isComplete({ field: 'created_at', op: 'in', value: s }, ts)).toBe(true);
       expect(toTraverseFilter({ field: 'created_at', op: 'in', value: `"${s}"` }, ts)).toEqual({ column: 'created_at', operator: 'in', value: [s.replace(/^(\d{4}-\d{2}-\d{2})T/, '$1 ')] });
@@ -190,25 +190,34 @@ describe('stamps and regex', () => {
     expect(isComplete({ field: 'created_at', op: 'in', value: '2024-01-01 10:00:00.' }, ts)).toBe(false);
     expect(isComplete({ field: 'created_at', op: 'in', value: '2024-02-31 10:00:00Z' }, ts)).toBe(false);
   });
-  test('a typed regex keeps the plain JS syntax check', () => {
-    expect(isComplete({ field: 'status', op: 'regex', value: '(?i)foo' }, str)).toBe(false);
-    expect(isComplete({ field: 'status', op: 'regex', value: 'abc' }, str)).toBe(true);
+  test('regex: one leading (?ims) group is allowed; other RE2 forms and syntax errors are not', () => {
+    for (const p of ['(?i)foo', '(?s)a.b', '(?m)^a', '(?is)a', 'abc'])
+      expect(isComplete({ field: 'status', op: 'regex', value: p }, str)).toBe(true);
+    for (const p of ['(?i:foo)', '(?U)a', '(', '[a-', '(?i)('])
+      expect(isComplete({ field: 'status', op: 'regex', value: p }, str)).toBe(false);
   });
-  test('a zone is allowed only on zoned types, and a fraction or zone only after seconds', () => {
-    const dt: Field = { ...ts, type: 'DATETIME' };
-    const ok = (v: string, f: Field = ts) => isComplete({ field: f.name, op: 'in', value: v }, f);
-    expect(ok('2024-01-01 10:00:00+02:00', dt)).toBe(false);
-    expect(ok('2024-01-01 10:00:00.5', dt)).toBe(true);
-    for (const t of ['TIMESTAMP_NTZ', 'TIMESTAMP WITHOUT TIME ZONE']) expect(ok('2024-01-01 10:00:00Z', { ...ts, type: t })).toBe(false);
-    for (const t of ['TIMESTAMPTZ', 'TIMESTAMP WITH TIME ZONE', 'TIMESTAMP_LTZ', 'TIMESTAMP_TZ']) expect(ok('2024-01-01 10:00:00Z', { ...ts, type: t })).toBe(true);
-    expect(ok('2024-01-01 10:00Z')).toBe(false);
-    expect(ok('2024-01-01 10:00:00.1234567')).toBe(false);
-    for (const z of ['+14:00', '+02', '-0530', ' +02:00', ' UTC']) expect(ok(`2024-01-01 10:00:00${z}`)).toBe(true);
-    for (const z of ['+15:00', '+02:60']) expect(ok(`2024-01-01 10:00:00${z}`)).toBe(false);
+  test('a (?i) regex reaches the traverse filters', () => {
+    expect(toTraverseFilters([str], [{ field: 'status', op: 'regex', value: '(?i)foo' }])).toEqual([{ column: 'status', operator: 'regex', value: '(?i)foo' }]);
   });
-  test('withSeconds swaps the T in every stamp form and adds seconds only to a bare HH:MM', () => {
+  test('zones: only Z, " UTC" and ±HH:MM after seconds; which ones depend on the type', () => {
+    const ok = (v: string, type: string) => isComplete({ field: 'created_at', op: 'in', value: v }, { ...ts, type });
+    for (const t of ['TIMESTAMPTZ', 'TIMESTAMP WITH TIME ZONE', 'TIMESTAMP_TZ', 'TIMESTAMP_LTZ', 'TIMESTAMP WITH LOCAL TIME ZONE']) {
+      for (const z of ['Z', ' UTC', '+02:00', '-05:30', '+00:00']) expect(ok(`2024-01-01 10:00:00${z}`, t)).toBe(true);
+    }
+    for (const z of ['+0200', '+02', ' +02:00', ' Z', 'UTC', '+15:00', '+02:60']) expect(ok(`2024-01-01 10:00:00${z}`, 'TIMESTAMPTZ')).toBe(false);
+    expect(ok('2024-01-01 10:00:00+02:00', 'TIMESTAMP')).toBe(false);
+    for (const z of ['Z', ' UTC', '+00:00']) expect(ok(`2024-01-01 10:00:00${z}`, 'TIMESTAMP')).toBe(true);
+    for (const t of ['DATETIME', 'TIMESTAMP_NTZ', 'TIMESTAMP WITHOUT TIME ZONE']) {
+      expect(ok('2024-01-01 10:00:00Z', t)).toBe(false);
+      expect(ok('2024-01-01 10:00:00.5', t)).toBe(true);
+    }
+    expect(ok('2024-01-01 10:00Z', 'TIMESTAMPTZ')).toBe(false);
+    expect(ok('2024-01-01 10:00:00.1234567', 'TIMESTAMP')).toBe(false);
+  });
+  test('withSeconds swaps the T, and adds seconds only to a bare HH:MM, with a T or a space', () => {
     const out = (v: string) => (toTraverseFilter({ field: 'created_at', op: 'after', value: v }, ts) as { value: string }).value;
     expect(out('2024-01-01T10:00')).toBe('2024-01-01 10:00:00');
+    expect(out('2024-01-01 10:00')).toBe('2024-01-01 10:00:00');
     expect(out('2024-01-01T10:00:00.5+02:00')).toBe('2024-01-01 10:00:00.5+02:00');
     expect(out('2024-01-01T10:00:00Z')).toBe('2024-01-01 10:00:00Z');
   });
