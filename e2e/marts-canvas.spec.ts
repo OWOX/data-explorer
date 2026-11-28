@@ -8,17 +8,17 @@ test('canvas: add marts through ghosts, move countries from customers to stores,
   await expect(marts.locator('article#dm-orders')).toBeVisible();
 
   // Add customers and stores through the main card's ghosts, then countries through customers.
-  await marts.locator('article#dm-orders [data-join-plus]').hover();
+  await marts.locator('article#dm-orders [data-join-plus]').click();
   await marts.locator('article[data-ghost][data-mart-id="customers"]').click();
   await expect(marts.locator('article[data-ghost][data-mart-id="customers"]')).toHaveCount(0);
-  // The added card is pinned and shows its own ghosts: Escape lets the pin go.
+  // The added card is selected and its own ghosts wait for its (+).
   await page.keyboard.press('Escape');
-  await marts.locator('article#dm-orders [data-join-plus]').hover();
+  await marts.locator('article#dm-orders [data-join-plus]').click();
   await expect(marts.locator('article[data-ghost][data-mart-id="stores"]')).toBeVisible();
   await marts.locator('article[data-ghost][data-mart-id="stores"]').click();
   await expect(marts.locator('article[data-ghost][data-mart-id="stores"]')).toHaveCount(0);
   await page.keyboard.press('Escape');
-  await marts.locator('[id="dm-customers@customers"] [data-join-plus]').hover();
+  await marts.locator('[id="dm-customers@customers"] [data-join-plus]').click();
   await expect(marts.locator('article[data-ghost][data-mart-id="countries"]')).toBeVisible();
   await marts.locator('article[data-ghost][data-mart-id="countries"]').click();
   await expect(page.locator('#tree-wires path[data-from="dm-customers@customers"][data-to="dm-countries@customers.countries"]')).toHaveCount(1);
@@ -57,14 +57,14 @@ test('canvas: Countries under both Customers and Stores, × on a middle card kee
   const marts = page.locator('#band-marts');
   const data = page.locator('#band-data');
   await marts.getByRole('radio', { name: 'Graph' }).click();
-  await marts.locator('article#dm-orders [data-join-plus]').hover();
+  await marts.locator('article#dm-orders [data-join-plus]').click();
   await marts.locator('article[data-ghost][data-mart-id="customers"]').click();
   await page.keyboard.press('Escape');
-  await marts.locator('article#dm-orders [data-join-plus]').hover();
+  await marts.locator('article#dm-orders [data-join-plus]').click();
   await marts.locator('article[data-ghost][data-mart-id="stores"]').click();
   await page.keyboard.press('Escape');
   for (const parent of ['customers', 'stores']) {
-    await marts.locator(`[id="dm-${parent}@${parent}"] [data-join-plus]`).hover();
+    await marts.locator(`[id="dm-${parent}@${parent}"] [data-join-plus]`).click();
     await marts.locator('article[data-ghost][data-mart-id="countries"]').click();
     await expect(marts.locator(`[id="dm-countries@${parent}.countries"]`)).toBeVisible();
     await page.keyboard.press('Escape');
@@ -100,12 +100,12 @@ test('grid: Remove from report on a middle mart takes only its own columns; the 
   const marts = page.locator('#band-marts');
   const data = page.locator('#band-data');
   await marts.getByRole('radio', { name: 'Graph' }).click();
-  await marts.locator('article#dm-orders [data-join-plus]').hover();
+  await marts.locator('article#dm-orders [data-join-plus]').click();
   await marts.locator('article[data-ghost][data-mart-id="customers"]').click();
   await page.keyboard.press('Escape');
   await expect(marts.locator('[id="dm-customers@customers"]')).toBeVisible();
   await page.mouse.move(0, 0);
-  await marts.locator('[id="dm-customers@customers"] [data-join-plus]').hover();
+  await marts.locator('[id="dm-customers@customers"] [data-join-plus]').click();
   await expect(marts.locator('article[data-ghost][data-mart-id="countries"]')).toBeVisible();
   await marts.locator('article[data-ghost][data-mart-id="countries"]').click();
   await page.keyboard.press('Escape');
@@ -159,25 +159,47 @@ test('canvas: hovering a card shows no ghosts; its (+) sits on the middle of the
   await expect(marts.locator('article[data-ghost]')).toHaveCount(0);
 });
 
-test('canvas: focus on a (+) shows its ghosts and blur lets them go; a pinned card yields to another card\'s (+) while it is hovered', async ({ page }) => {
+test('canvas: hover and focus on a (+) open nothing; a click opens its ghosts, a second click or Escape closes them, another card\'s (+) moves them', async ({ page }) => {
   await page.goto('/?mock');
   const marts = page.locator('#band-marts');
   await marts.getByRole('radio', { name: 'Graph' }).click();
+  const ghosts = marts.locator('article[data-ghost]');
   const plus = marts.locator('article#dm-orders [data-join-plus]');
-  await plus.focus();
-  await expect(marts.locator('article[data-ghost]').first()).toBeVisible();
-  await plus.evaluate((n) => (n as HTMLElement).blur());
-  await expect(marts.locator('article[data-ghost]')).toHaveCount(0);
-
   await plus.hover();
+  await plus.focus();
+  await page.waitForTimeout(600);
+  await expect(ghosts).toHaveCount(0);
+  await expect(plus).toHaveAttribute('aria-expanded', 'false');
+
+  await plus.click();
+  await expect(ghosts.first()).toBeVisible();
+  await expect(plus).toHaveAttribute('aria-expanded', 'true');
+  await plus.click();
+  await expect(ghosts).toHaveCount(0);
+  await plus.click();
+  await expect(ghosts.first()).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(ghosts).toHaveCount(0);
+
+  // A ghost click adds the card and selects it; its own ghosts wait for its (+).
+  await plus.click();
   await marts.locator('article[data-ghost][data-mart-id="customers"]').click();
+  const customers = marts.locator('[id="dm-customers@customers"]');
+  await expect(customers).toHaveAttribute('data-focused', '');
+  await page.waitForTimeout(300);
+  await expect(ghosts).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Make it main/ })).toBeVisible();
+
+  // Another card's (+) moves the ghosts there, and hovering the first card's (+) changes nothing.
+  await customers.locator('[data-join-plus]').click();
   await expect(marts.locator('article[data-ghost][data-mart-id="countries"]')).toBeVisible();
   await plus.hover();
-  await expect(marts.locator('article[data-ghost][data-mart-id="products"]')).toBeVisible();
-  await expect(marts.locator('article[data-ghost][data-mart-id="countries"]')).toHaveCount(0);
-  await page.mouse.move(0, 0);
+  await page.waitForTimeout(600);
   await expect(marts.locator('article[data-ghost][data-mart-id="countries"]')).toBeVisible();
   await expect(marts.locator('article[data-ghost][data-mart-id="products"]')).toHaveCount(0);
+  await plus.click();
+  await expect(marts.locator('article[data-ghost][data-mart-id="products"]')).toBeVisible();
+  await expect(marts.locator('article[data-ghost][data-mart-id="countries"]')).toHaveCount(0);
 });
 
 test('canvas: the dimming holds on a card the pointer reached across the gap, and a blur does not undo what the pointer holds', async ({ page }) => {
@@ -185,7 +207,7 @@ test('canvas: the dimming holds on a card the pointer reached across the gap, an
   const marts = page.locator('#band-marts');
   await marts.getByRole('radio', { name: 'Graph' }).click();
   for (const id of ['customers', 'stores']) {
-    await marts.locator('article#dm-orders [data-join-plus]').hover();
+    await marts.locator('article#dm-orders [data-join-plus]').click();
     await marts.locator(`article[data-ghost][data-mart-id="${id}"]`).click();
     await page.keyboard.press('Escape');
   }
@@ -214,108 +236,44 @@ test('canvas: the dimming holds on a card the pointer reached across the gap, an
   await expect(customers).toHaveClass(/dm-faded/);
 });
 
-test('canvas: the (+) of a ghost of a pinned card adds its level by hover and by focus; the pin\'s own ghosts stay after it', async ({ page }) => {
+test('canvas: the (+) of a ghost adds its level on a click only, a second click closes it, and the open ghosts stay wherever the pointer goes', async ({ page }) => {
   await page.goto('/?mock');
   const marts = page.locator('#band-marts');
   await marts.getByRole('radio', { name: 'Graph' }).click();
   const ghost = (id: string) => marts.locator(`article[data-ghost][data-mart-id="${id}"]`);
   await marts.locator('article#dm-orders [data-join-plus]').click();
-  await ghost('customers').hover({ position: { x: 20, y: 20 } });
-  await page.waitForTimeout(100);
-  await expect(ghost('countries')).toHaveCount(0);
-  await ghost('customers').locator('[data-join-plus]').hover();
-  await expect(ghost('countries')).toBeVisible();
-  // It stays while the pointer crosses to it and rests there.
-  await ghost('countries').hover({ position: { x: 20, y: 20 } });
-  await page.waitForTimeout(600);
-  await expect(ghost('countries')).toBeVisible();
-  await page.mouse.move(0, 0);
-  await expect(ghost('countries')).toHaveCount(0);
-  await expect(ghost('customers')).toBeVisible();
-
   const plus = ghost('customers').locator('[data-join-plus]');
+  await plus.hover();
   await plus.focus();
+  await page.waitForTimeout(600);
+  await expect(ghost('countries')).toHaveCount(0);
+  await plus.click();
   await expect(ghost('countries')).toBeVisible();
-  await plus.evaluate((n) => (n as HTMLElement).blur());
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(600);
+  await expect(ghost('countries')).toBeVisible();
+  await expect(ghost('customers')).toBeVisible();
+  await plus.click();
   await expect(ghost('countries')).toHaveCount(0);
   await expect(ghost('customers')).toBeVisible();
 });
 
-test('canvas: after Escape or a second click the (+) under a still pointer shows nothing until the pointer has left it', async ({ page }) => {
+test('canvas: a still pointer over a joined card\'s (+) never opens or closes the ghosts as the page grows or shrinks', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 600 });
   await page.goto('/?mock');
   const marts = page.locator('#band-marts');
   await marts.getByRole('radio', { name: 'Graph' }).click();
   const ghosts = marts.locator('article[data-ghost]');
-  const plus = marts.locator('article#dm-orders [data-join-plus]');
-  // The (+) of a joined card too: the scroll box shrinks as its ghosts go.
-  await plus.hover();
+  await marts.locator('article#dm-orders [data-join-plus]').click();
   await marts.locator('article[data-ghost][data-mart-id="customers"]').click();
-  await expect(marts.locator('[id="dm-customers@customers"]')).toBeVisible();
-  await page.keyboard.press('Escape');
-  for (const target of [plus, marts.locator('[id="dm-customers@customers"] [data-join-plus]')]) {
-    for (const close of ['Escape', 'Escape pinned', 'second click']) {
-      await page.mouse.move(0, 0);
-      await page.waitForTimeout(600);
-      await target.hover();
-      await expect(ghosts.first()).toBeVisible();
-      if (close !== 'Escape') await target.click();
-      if (close === 'second click') await target.click();
-      else await page.keyboard.press('Escape');
-      await expect(ghosts).toHaveCount(0);
-      await page.waitForTimeout(600);
-      await expect(ghosts).toHaveCount(0);
-      const dot = (await target.boundingBox())!;
-      await page.mouse.move(dot.x + dot.width / 2 + 1, dot.y + dot.height / 2 + 1);
-      await page.waitForTimeout(100);
-      await expect(ghosts).toHaveCount(0);
-    }
-  }
-  await page.mouse.move(0, 0);
-  await plus.hover();
+  const plus = marts.locator('[id="dm-customers@customers"] [data-join-plus]');
+  await plus.click();
   await expect(ghosts.first()).toBeVisible();
-});
-
-test('canvas: the ghosts go a grace after the pointer left them, at once or wandering over another card', async ({ page }) => {
-  await page.goto('/?mock');
-  const marts = page.locator('#band-marts');
-  await marts.getByRole('radio', { name: 'Graph' }).click();
-  const ghosts = marts.locator('article[data-ghost]');
-  const plus = marts.locator('article#dm-orders [data-join-plus]');
-  await plus.hover();
-  await marts.locator('article[data-ghost][data-mart-id="customers"]').click();
-  const customers = marts.locator('[id="dm-customers@customers"]');
-  await expect(customers).toBeVisible();
-  await page.keyboard.press('Escape');
-  await page.mouse.move(0, 0);
-  await page.waitForTimeout(600);
-  const dot = (await plus.boundingBox())!;
-  const other = (await customers.boundingBox())!;
-
-  // Over the (+) and off it with nothing in between.
-  for (let i = 0; i < 5; i++) {
-    await Promise.all([page.mouse.move(dot.x + dot.width / 2, dot.y + dot.height / 2), page.mouse.move(0, 0)]);
-    await page.waitForTimeout(700);
-    await expect(ghosts).toHaveCount(0);
-  }
-
-  // Never still on the other card: the ghosts are there well into the grace and gone after it.
-  await page.mouse.move(dot.x + dot.width / 2, dot.y + dot.height / 2);
-  await expect(ghosts.first()).toBeVisible();
-  await page.evaluate(() => {
-    const w = window as unknown as { goneAfter?: number };
-    let left: number | null = null;
-    document.addEventListener('pointerover', (e) => { if (left === null && (e.target as Element).closest('[data-tree-path="customers"]')) left = performance.now(); }, true);
-    const look = () => {
-      if (left !== null && document.querySelector('article[data-ghost]') === null) w.goneAfter = performance.now() - left;
-      else requestAnimationFrame(look);
-    };
-    look();
-  });
-  for (let i = 0; i < 20; i++) {
-    await page.mouse.move(other.x + 30 + (i % 2) * 120, other.y + 20 + (i % 3) * 30);
-    await page.waitForTimeout(45);
-  }
-  const goneAfter = await page.evaluate(() => (window as unknown as { goneAfter?: number }).goneAfter);
-  expect(goneAfter).toBeGreaterThan(350);
-  expect(goneAfter).toBeLessThan(800);
+  // Scrolled down while they show, then closed: the page shrinks under the pointer.
+  await page.evaluate(() => window.scrollTo(0, document.scrollingElement!.scrollHeight));
+  await plus.click();
+  await expect(ghosts).toHaveCount(0);
+  const counts: number[] = [];
+  for (let i = 0; i < 12; i++) { counts.push(await ghosts.count()); await page.waitForTimeout(100); }
+  expect(counts.every((n) => n === 0)).toBe(true);
 });

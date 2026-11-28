@@ -42,11 +42,11 @@ test('Table: the config menu lists the data marts, and a field of a joinable mar
 test('a data mart on a path with no column is listed after the shown ones; ticking a field of it brings its column back', async ({ page }) => {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   await marts(page).getByRole('radio', { name: 'Graph' }).click();
-  await marts(page).locator('article#dm-orders [data-join-plus]').hover();
+  await marts(page).locator('article#dm-orders [data-join-plus]').click();
   await marts(page).locator('article[data-ghost][data-mart-id="customers"]').click();
   await page.keyboard.press('Escape');
   await page.mouse.move(0, 0);
-  await marts(page).locator('[id="dm-customers@customers"] [data-join-plus]').hover();
+  await marts(page).locator('[id="dm-customers@customers"] [data-join-plus]').click();
   await marts(page).locator('article[data-ghost][data-mart-id="countries"]').click();
   await page.keyboard.press('Escape');
   await expect(groupTitles(page)).toHaveText(['Orders', 'Customers', 'Countries']);

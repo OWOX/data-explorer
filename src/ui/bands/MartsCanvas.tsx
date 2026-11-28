@@ -68,9 +68,9 @@ export function MartsCanvas({ model, mainId, columns, emptyPaths, sources, count
       if (pick && node && pick.moves.size > 0) void click(node.martId, { moves: pick.moves });
     },
   }, mainId);
-  // The pin, the card whose ghosts show and the chain of ghosts from it. A pin on a path the tree no longer has (a drag moved it, or Undo removed it), or one kept for another main mart, is let go.
+  // The card whose ghosts a (+) opened, the chain of ghosts from it, and the selected card. What stands on a path the tree no longer has (a drag moved it, or Undo removed it), or was kept for another main mart, is let go.
   const hover = useGhostChain(mainId, tree);
-  const { pin, pinnedChain, clear: clearGhosts } = hover;
+  const { selected, chain: openChain, clear: clearGhosts } = hover;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') clearGhosts(); };
     document.addEventListener('keydown', onKey);
@@ -124,12 +124,12 @@ export function MartsCanvas({ model, mainId, columns, emptyPaths, sources, count
     return () => box.removeEventListener('click', onClick);
   }, [mainId, clearGhosts]);
 
-  // A pinned card keeps its ghosts while another card is hovered, as in the Grid; another card's (+) shows its own ghosts for as long as it is hovered, and the (+) of a ghost extends the chain from it.
-  const pinnedMart = pin === null || pin === '' ? null : tree.nodes.get(pin)?.martId ?? null;
+  // Only a click on a (+) opens or closes ghosts; a click on a card selects it, and the header offers to make a selected joined card the main one.
+  const selectedMart = selected === null || selected === '' ? null : tree.nodes.get(selected)?.martId ?? null;
   useEffect(() => {
-    onSelectedMart?.(pinnedMart);
+    onSelectedMart?.(selectedMart);
     return () => onSelectedMart?.(null);
-  }, [pinnedMart, onSelectedMart]);
+  }, [selectedMart, onSelectedMart]);
   // While a card is in hand no ghosts show and the hover and pin logic sits still.
   const anchor = drag ? null : hover.anchor;
   // A source counts only when its mart can be read.
@@ -242,7 +242,7 @@ export function MartsCanvas({ model, mainId, columns, emptyPaths, sources, count
               quality={dq.get(mart.id)}
               selected={node.path === ''}
               joined={node.path !== ''}
-              focused={pin === node.path}
+              focused={selected === node.path}
               faded={drag ? node.path !== drag.path && !valid.has(node.path) : fadedAt(node.martId, node.path)}
               path={node.path}
               title={titleOf(node.path)}
@@ -250,7 +250,7 @@ export function MartsCanvas({ model, mainId, columns, emptyPaths, sources, count
                 const parent = tree.nodes.get(node.parent!)!;
                 void click(node.martId, { removePaths: node.bare ? subtreePaths(tree, node.path) : [node.path] }).then(() => setFocusCard({ martId: parent.martId, path: parent.path }), () => undefined);
               }}
-              join={joinableAt(node.path) ? { open: pin === node.path, onToggle: () => hover.togglePlus(node.path) } : undefined}
+              join={joinableAt(node.path) ? { open: hover.anchor === node.path, onToggle: () => hover.togglePlus(node.path) } : undefined}
               lit={false}
               onSelect={() => hover.toggleCard(node.path)}
               onOpenApp={() => onOpenApp(mart.id)}
@@ -277,14 +277,14 @@ export function MartsCanvas({ model, mainId, columns, emptyPaths, sources, count
               quality={dq.get(mart.id)}
               selected={false}
               joined={false}
-              join={joinableAt(g.aliasPath) ? { open: pin !== null && pinnedChain.includes(g.aliasPath), onToggle: () => hover.toggleGhostPlus(g.aliasPath) } : undefined}
+              join={joinableAt(g.aliasPath) ? { open: openChain.includes(g.aliasPath), onToggle: () => hover.toggleGhostPlus(g.aliasPath) } : undefined}
               lit={false}
               onSelect={() => { clearGhosts();
-                // The added card is pinned, so what joins under it shows at once. A click that added nothing pins nothing.
+                // The added card is selected; its own ghosts wait for its (+). A click that added nothing selects nothing.
                 const main = mainId;
                 click(g.martId, { addAt: g.aliasPath }).then(() => {
                   if (latest.current.mainId !== main || !latest.current.tree.nodes.has(g.aliasPath)) return;
-                  hover.pinCard(g.aliasPath);
+                  hover.selectCard(g.aliasPath);
                   setFocusCard({ martId: g.martId, path: g.aliasPath });
                 }, () => undefined);
               }}

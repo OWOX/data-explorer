@@ -245,24 +245,27 @@ describe('Graph', () => {
     expect(left('customers', 'customers')).toBeGreaterThan(0);
   });
 
-  test('report lines are solid, a pinned card has the 2px border, and what can join is dashed at full strength', async () => {
+  test('report lines are solid, a selected card has the 2px border, and what can join is dashed at full strength', async () => {
     setup();
     await joinTwo();
     await toCanvas();
     await waitFor(() => expect(el('stores', 'stores')).not.toBeNull());
     expect(wire('tree-wires', 'dm-orders', 'dm-customers@customers')).toHaveClass('relationship', 'joined');
+    // A click on the card selects it and shows no ghosts; its (+) does.
     await userEvent.click(el('orders')!);
     expect(el('orders')).toHaveAttribute('data-focused');
+    expect(ghostOf('products')).toBeNull();
+    await userEvent.click(el('orders')!.querySelector<HTMLElement>('[data-join-plus]')!);
     const ghost = await waitFor(() => { const g = ghostOf('products'); expect(g).not.toBeNull(); return g!; });
     expect(ghost).toHaveClass('dm-ghost');
     expect(ghost).not.toHaveClass('dm-faded');
     const line = document.querySelector<SVGPathElement>(`#tree-wires path[data-to="${ghost.id}"]`)!;
     expect(line).toHaveClass('ghost');
     expect(line).not.toHaveClass('joined');
-    expect(faded()).toEqual([]); // a pin dims nothing
+    expect(faded()).toEqual([]); // a selection dims nothing
   });
 
-  test('hovering a card fades the cards it does not touch, and its (+) shows its ghosts; leaving restores them after the grace', async () => {
+  test('hovering a card fades the cards it does not touch and shows no ghosts; its (+) shows them on a click, and leaving restores the cards after the grace', async () => {
     setup();
     await joinTwo();
     await toCanvas();
@@ -272,12 +275,15 @@ describe('Graph', () => {
     expect(faded()).toEqual(['dm-stores@stores']);
     expect(ghostOf('countries')).toBeNull();
     await userEvent.hover(el('customers', 'customers')!.querySelector<HTMLElement>('[data-join-plus]')!);
+    expect(ghostOf('countries')).toBeNull();
+    await userEvent.click(el('customers', 'customers')!.querySelector<HTMLElement>('[data-join-plus]')!);
     await waitFor(() => expect(ghostOf('countries')).not.toBeNull());
     expect(faded()).toEqual(['dm-stores@stores']);
     expect(ghostOf('countries')).not.toHaveClass('dm-faded');
     await userEvent.unhover(el('customers', 'customers')!);
     await waitFor(() => expect(faded()).toEqual([]), { timeout: 2000 });
-    await waitFor(() => expect(ghostOf('countries')).toBeNull());
+    // The pointer leaving closes no ghosts.
+    expect(ghostOf('countries')).not.toBeNull();
   });
 
   test('moving from a (+) onto its ghost keeps the ghost and its card, and fades the rest', async () => {
@@ -285,7 +291,7 @@ describe('Graph', () => {
     await joinTwo();
     await toCanvas();
     await waitFor(() => expect(el('stores', 'stores')).not.toBeNull());
-    await userEvent.hover(el('customers', 'customers')!.querySelector<HTMLElement>('[data-join-plus]')!);
+    await userEvent.click(el('customers', 'customers')!.querySelector<HTMLElement>('[data-join-plus]')!);
     const ghost = await waitFor(() => { const g = ghostOf('countries'); expect(g).not.toBeNull(); return g!; });
     await userEvent.hover(ghost);
     expect(ghost).not.toHaveClass('dm-faded');

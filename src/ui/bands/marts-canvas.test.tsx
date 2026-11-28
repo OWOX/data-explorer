@@ -44,12 +44,12 @@ test('canvas shows the main mart and its joined marts as a tree', async () => {
   expect(marts().querySelector('[data-ghost]')).toBeNull();
 });
 
-test('hovering the (+) of a card shows its ghosts; clicking a ghost adds that mart through that path', async () => {
+test('clicking the (+) of a card shows its ghosts; clicking a ghost adds that mart through that path', async () => {
   setup();
   await ready();
   await toCanvas();
   await waitFor(() => expect(el('orders')).not.toBeNull());
-  await userEvent.hover(plusOf(el('orders')!));
+  await userEvent.click(plusOf(el('orders')!));
   await waitFor(() => expect(ghosts()).toEqual(expect.arrayContaining(['dm-customers@customers', 'dm-products@products', 'dm-stores@stores'])));
   await userEvent.click(marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="customers"]')!);
   await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
@@ -63,7 +63,7 @@ test('a ghost keeps its place while the pointer is in its tooltip', async () => 
   await ready();
   await toCanvas();
   await waitFor(() => expect(el('orders')).not.toBeNull());
-  await userEvent.hover(plusOf(el('orders')!));
+  await userEvent.click(plusOf(el('orders')!));
   const ghost = await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="customers"]'); expect(g).not.toBeNull(); return g!; });
   await userEvent.hover(ghost.querySelector<HTMLElement>('.dm-node-title')!);
   const bubble = await waitFor(() => { const b = document.querySelector<HTMLElement>('.dm-hint-body'); expect(b).not.toBeNull(); return b!; });
@@ -74,34 +74,37 @@ test('a ghost keeps its place while the pointer is in its tooltip', async () => 
   expect(document.querySelector('.dm-hint-body')).not.toBeNull();
 });
 
-test('clicking a card pins its ghosts; Escape lets them go', async () => {
+test('clicking a card selects it and opens no ghosts; Escape clears the selection', async () => {
   setup();
   await ready();
   await toCanvas();
   await waitFor(() => expect(el('orders')).not.toBeNull());
   await userEvent.click(el('orders')!);
-  await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
+  await waitFor(() => expect(el('orders')).toHaveAttribute('data-focused'));
+  expect(ghosts()).toEqual([]);
   expect(el('orders')).toHaveAttribute('aria-pressed', 'true');
   expect(groupTitles()).toEqual(['Orders']);
   await userEvent.unhover(el('orders')!);
   await new Promise((r) => setTimeout(r, 600));
-  expect(ghosts().length).toBeGreaterThan(0);
-  expect(groupTitles()).toEqual(['Orders']);
-  expect(el('orders')).toHaveAttribute('aria-pressed', 'true');
+  expect(ghosts()).toEqual([]);
+  expect(el('orders')).toHaveAttribute('data-focused');
   await userEvent.keyboard('{Escape}');
-  await waitFor(() => expect(ghosts()).toEqual([]));
+  await waitFor(() => expect(el('orders')).not.toHaveAttribute('data-focused'));
 });
 
-test('clicking the empty canvas lets the pinned ghosts go', async () => {
+test('clicking the empty canvas closes the ghosts and clears the selection', async () => {
   setup();
   await ready();
   await toCanvas();
   await waitFor(() => expect(el('orders')).not.toBeNull());
   await userEvent.click(el('orders')!);
+  await userEvent.click(plusOf(el('orders')!));
   await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
+  expect(el('orders')).toHaveAttribute('data-focused');
   await userEvent.unhover(el('orders')!);
   await userEvent.click(within(marts()).getByTestId('marts-canvas'));
   await waitFor(() => expect(ghosts()).toEqual([]));
+  expect(el('orders')).not.toHaveAttribute('data-focused');
 });
 
 test('with joined sources not loaded, the canvas shows the main card alone', async () => {
@@ -132,16 +135,14 @@ const joinCountriesUnderCustomers = async () => {
   await toCanvas();
   await waitFor(() => expect(el('orders')).not.toBeNull());
   vi.spyOn(marts().querySelector('.dm-tree')!, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) });
-  await userEvent.hover(plusOf(el('orders')!));
+  await userEvent.click(plusOf(el('orders')!));
   await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="customers"]'); expect(g).not.toBeNull(); return g!; }));
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
-  // The added card is pinned: let the pin go so the next ghost is looked up under the card hovered.
-  await userEvent.keyboard('{Escape}');
-  await userEvent.hover(plusOf(el('orders')!));
+  // A click on a ghost closes the ghosts, so the (+) is clicked again for the next one.
+  await userEvent.click(plusOf(el('orders')!));
   await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="stores"]'); expect(g).not.toBeNull(); return g!; }));
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers', 'Stores']));
-  await userEvent.keyboard('{Escape}');
-  await userEvent.hover(plusOf(el('customers', 'customers')!));
+  await userEvent.click(plusOf(el('customers', 'customers')!));
   await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="countries"]'); expect(g).not.toBeNull(); return g!; }));
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers', 'Stores', 'Countries']));
   await userEvent.keyboard('{Escape}');
@@ -194,7 +195,7 @@ test('Escape or a release away from any target changes nothing, and the next cli
   fireEvent.pointerUp(document.body, pointer(5, 5, 0));
   await new Promise((r) => setTimeout(r, 20));
   expect(headers()).toEqual(before);
-  await userEvent.click(el('orders')!);
+  await userEvent.click(plusOf(el('orders')!));
   await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
 });
 
@@ -242,9 +243,10 @@ test('scrolling the tree box re-lays out the page wires; scrolling elsewhere in 
   await waitFor(() => expect(spy.mock.calls.length).toBeGreaterThan(base));
 });
 
-test('a pin on a card whose path moved away does not hold the ghosts back', async () => {
+test('a selection on a card whose path moved away is let go, and a (+) still shows its ghosts', async () => {
   await joinCountriesUnderCustomers();
   await userEvent.click(el('countries', 'customers.countries')!);
+  expect(el('countries', 'customers.countries')).toHaveAttribute('data-focused');
   const stores = () => centre('stores', 'stores');
   const c = () => centre('countries', 'customers.countries');
   fireEvent.pointerDown(el('countries', 'customers.countries')!, pointer(c().x, c().y));
@@ -252,8 +254,9 @@ test('a pin on a card whose path moved away does not hold the ghosts back', asyn
   fireEvent.pointerMove(treeEl(), pointer(stores().x, stores().y));
   fireEvent.pointerUp(el('stores', 'stores')!, pointer(stores().x, stores().y, 0));
   await waitFor(() => expect(tips()).toContain('Stores → Countries'));
+  expect(marts().querySelectorAll('article[data-focused]')).toHaveLength(0);
   await userEvent.unhover(el('countries', 'stores.countries')!);
-  await userEvent.hover(plusOf(el('orders')!));
+  await userEvent.click(plusOf(el('orders')!));
   await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
 });
 
@@ -283,7 +286,7 @@ test('adding a mart with Enter on a ghost moves focus to its new card', async ()
   await ready();
   await toCanvas();
   await waitFor(() => expect(el('orders')).not.toBeNull());
-  await userEvent.hover(plusOf(el('orders')!));
+  await userEvent.click(plusOf(el('orders')!));
   const ghost = await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="customers"]'); expect(g).not.toBeNull(); return g!; });
   ghost.focus();
   await userEvent.keyboard('{Enter}');
@@ -301,7 +304,7 @@ const countriesUnderBoth = async () => {
   fireEvent.pointerUp(el('stores', 'stores')!, pointer(stores().x, stores().y, 0));
   await waitFor(() => expect(el('countries', 'stores.countries')).not.toBeNull());
   expect(el('countries', 'customers.countries')).toBeNull();
-  await userEvent.hover(plusOf(el('customers', 'customers')!));
+  await userEvent.click(plusOf(el('customers', 'customers')!));
   await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="countries"]'); expect(g).not.toBeNull(); return g!; }));
   await waitFor(() => expect(el('countries', 'customers.countries')).not.toBeNull());
 };
@@ -345,7 +348,7 @@ test('with Customers joined, the source line reaches its path card', async () =>
   await ready();
   await toCanvas();
   await waitFor(() => expect(el('orders')).not.toBeNull());
-  await userEvent.hover(plusOf(el('orders')!));
+  await userEvent.click(plusOf(el('orders')!));
   await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="customers"]'); expect(g).not.toBeNull(); return g!; }));
   await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
   await waitFor(() => expect(document.querySelector('#wires path.source[data-to="dm-customers@customers"]')).not.toBeNull());
@@ -374,21 +377,24 @@ test('two copies of one mart read with their parent marts, and so do their remov
 
 const ghostEl = (id: string, path: string) => marts().querySelector<HTMLElement>(`article[data-ghost][id="${martElementId(id, path)}"]`);
 
-test('a second click on the pinned card lets its ghosts go, though the pointer stays on it; the (+) shows them again once the pointer has left it', async () => {
+test('a second click on a (+) closes its ghosts, and the pointer staying on it does not bring them back', async () => {
   setup();
   await ready();
   await toCanvas();
   await waitFor(() => expect(el('orders')).not.toBeNull());
-  await userEvent.click(el('orders')!);
+  await userEvent.click(plusOf(el('orders')!));
   await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
-  await userEvent.click(el('orders')!);
+  await userEvent.click(plusOf(el('orders')!));
   await waitFor(() => expect(ghosts()).toEqual([]));
   await userEvent.unhover(el('orders')!);
   await userEvent.hover(plusOf(el('orders')!));
+  await later(100);
+  expect(ghosts()).toEqual([]);
+  await userEvent.click(plusOf(el('orders')!));
   await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
 });
 
-test('only the pinned card is tinted: nothing is before a click, the pinned card after, the other cards stay plain', async () => {
+test('only the selected card is tinted: nothing is before a click, the selected card after, the other cards stay plain', async () => {
   setup();
   await ready();
   fireEvent.click(gridCard('Customers'));
@@ -403,47 +409,57 @@ test('only the pinned card is tinted: nothing is before a click, the pinned card
   await waitFor(() => expect(marts().querySelectorAll('article[data-focused]')).toHaveLength(0));
 });
 
-test('clicking another card moves the pin', async () => {
+test('clicking another card\'s (+) moves the ghosts there', async () => {
   await joinCountriesUnderCustomers();
-  await userEvent.click(el('orders')!);
+  await userEvent.click(plusOf(el('orders')!));
   await waitFor(() => expect(ghostEl('products', 'products')).not.toBeNull());
-  await userEvent.click(el('customers', 'customers')!);
-  await waitFor(() => expect(ghostEl('countries', 'customers.countries')).toBeNull());
-  await userEvent.unhover(el('customers', 'customers')!);
+  expect(plusOf(el('orders')!)).toHaveAttribute('aria-expanded', 'true');
+  await userEvent.click(plusOf(el('stores', 'stores')!));
+  await waitFor(() => expect(ghostEl('products', 'products')).toBeNull());
+  expect(plusOf(el('orders')!)).toHaveAttribute('aria-expanded', 'false');
+  expect(plusOf(el('stores', 'stores')!)).toHaveAttribute('aria-expanded', 'true');
+  await userEvent.unhover(el('stores', 'stores')!);
   await new Promise((r) => setTimeout(r, 500));
   expect(ghostEl('products', 'products')).toBeNull();
+  expect(plusOf(el('stores', 'stores')!)).toHaveAttribute('aria-expanded', 'true');
 });
 
-test('hover shows the ghosts at once, also when the pointer moves from one card to another', async () => {
+test('a click on a (+) moves the ghosts at once from one card to another, and hovering a (+) opens nothing', async () => {
   await joinCountriesUnderCustomers();
   await userEvent.unhover(el('countries', 'customers.countries')!);
   await new Promise((r) => setTimeout(r, 500));
   await userEvent.hover(plusOf(el('orders')!));
+  expect(ghostEl('products', 'products')).toBeNull();
+  await userEvent.click(plusOf(el('orders')!));
   expect(ghostEl('products', 'products')).not.toBeNull();
   await userEvent.hover(plusOf(el('stores', 'stores')!));
+  expect(ghostEl('products', 'products')).not.toBeNull();
+  await userEvent.click(plusOf(el('stores', 'stores')!));
   // No wait: the ghosts of the card just left are gone and the new card's are there.
   expect(ghostEl('products', 'products')).toBeNull();
 });
 
-test('hovering the (+) of a ghost shows its own joinable marts to its right, wired from it; moving back trims the chain', async () => {
+test('clicking the (+) of a ghost shows its own joinable marts to its right, wired from it; another ghost\'s (+) trims the chain, the card\'s own closes it', async () => {
   setup();
   await ready();
   await toCanvas();
   await waitFor(() => expect(el('orders')).not.toBeNull());
-  await userEvent.hover(plusOf(el('orders')!));
+  await userEvent.click(plusOf(el('orders')!));
   await waitFor(() => expect(ghostEl('customers', 'customers')).not.toBeNull());
   expect(ghostEl('countries', 'customers.countries')).toBeNull();
-  await userEvent.hover(plusOf(ghostEl('customers', 'customers')!));
+  await userEvent.click(plusOf(ghostEl('customers', 'customers')!));
   await waitFor(() => expect(ghostEl('countries', 'customers.countries')).not.toBeNull());
   const left = (a: HTMLElement) => parseFloat(a.parentElement!.style.left);
   expect(left(ghostEl('countries', 'customers.countries')!)).toBeGreaterThan(left(ghostEl('customers', 'customers')!));
   await waitFor(() => expect(document.querySelector('#tree-wires path.ghost[data-from="dm-customers@customers"][data-to="dm-countries@customers.countries"]')).not.toBeNull());
   // The (+) of a sibling ghost: the chain after the first link goes and the sibling's level shows.
-  await userEvent.hover(plusOf(ghostEl('stores', 'stores')!));
+  await userEvent.click(plusOf(ghostEl('stores', 'stores')!));
   expect(ghostEl('countries', 'customers.countries')).toBeNull();
   await waitFor(() => expect(ghostEl('countries', 'stores.countries')).not.toBeNull());
-  // The card's own (+): its ghosts alone.
-  await userEvent.hover(plusOf(el('orders')!));
+  // The card's own (+), clicked a second time, closes all of its ghosts; a third shows its own alone.
+  await userEvent.click(plusOf(el('orders')!));
+  expect(ghosts()).toEqual([]);
+  await userEvent.click(plusOf(el('orders')!));
   expect(ghostEl('countries', 'stores.countries')).toBeNull();
   expect(ghostEl('customers', 'customers')).not.toBeNull();
 });
@@ -453,8 +469,8 @@ test('clicking a ghost at the end of a chain adds only that mart: the marts on t
   await ready();
   await toCanvas();
   await waitFor(() => expect(el('orders')).not.toBeNull());
-  await userEvent.hover(plusOf(el('orders')!));
-  await userEvent.hover(plusOf(await waitFor(() => { const g = ghostEl('customers', 'customers'); expect(g).not.toBeNull(); return g!; })));
+  await userEvent.click(plusOf(el('orders')!));
+  await userEvent.click(plusOf(await waitFor(() => { const g = ghostEl('customers', 'customers'); expect(g).not.toBeNull(); return g!; })));
   await userEvent.hover(await waitFor(() => { const g = ghostEl('countries', 'customers.countries'); expect(g).not.toBeNull(); return g!; }));
   await userEvent.click(ghostEl('countries', 'customers.countries')!);
   await waitFor(() => expect(el('countries', 'customers.countries')).not.toBeNull());
@@ -481,18 +497,19 @@ test('parity with the Grid: only the x takes a mart out; clicks, Enter and Space
   await waitFor(() => expect(el('countries', 'customers.countries')).toBeNull());
 });
 
-test('while a card is pinned, hovering another card keeps the pinned card ghosts, and a ghost of the pin still shows its next level', async () => {
+test('while ghosts are open, hovering another card or a ghost keeps them, and a ghost of the card still shows its next level', async () => {
   await joinCountriesUnderCustomers();
-  await userEvent.click(el('orders')!);
+  await userEvent.click(plusOf(el('orders')!));
   await waitFor(() => expect(ghostEl('products', 'products')).not.toBeNull());
   await userEvent.hover(el('customers', 'customers')!);
+  await later(500);
   expect(ghostEl('products', 'products')).not.toBeNull();
   expect(ghostEl('countries', 'customers.countries')).toBeNull();
   await userEvent.hover(ghostEl('products', 'products')!);
   expect(ghostEl('products', 'products')).not.toBeNull();
 });
 
-test('a pin does not come back when the main mart goes away and returns', async () => {
+test('what a click opened or selected does not come back when the main mart goes away and returns', async () => {
   const mk = (id: string): Mart => ({ id, title: id.toUpperCase(), description: '', icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: null });
   const model = { marts: new Map([['a', mk('a')], ['b', mk('b')], ['c', mk('c')]]), sources: [], edges: [], contexts: [], failedStorages: [] } as unknown as Model;
   const joined = [{ aliasPath: 'b', martId: 'b', label: 'B', depth: 1, fields: [{ name: 'b__x', alias: 'x', type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId: 'b', label: 'B', aliasPath: 'b', originalName: 'x' } }], uniqueCount: true }] as unknown as Parameters<typeof MartsCanvas>[0]['sources'];
@@ -503,12 +520,15 @@ test('a pin does not come back when the main mart goes away and returns', async 
   );
   const { rerender } = render(view('a'));
   await userEvent.click(document.querySelector('article:not([data-ghost])')!);
+  expect(document.querySelector('article[data-focused]')).not.toBeNull();
+  await userEvent.click(plusOf(document.querySelector('article:not([data-ghost])')!));
   await waitFor(() => expect(document.querySelectorAll('article[data-ghost]')).toHaveLength(1));
   rerender(view('c'));
   rerender(view('a'));
   await userEvent.unhover(document.querySelector('article')!);
   await new Promise((r) => setTimeout(r, 500));
   expect(document.querySelectorAll('article[data-ghost]')).toHaveLength(0);
+  expect(document.querySelector('article[data-focused]')).toBeNull();
 });
 
 const zoomBox = () => within(marts()).getByTestId('marts-canvas');
@@ -554,15 +574,18 @@ test('at another scale the drag line and the drop pick use layout pixels', async
   await waitFor(() => expect(tips()).toContain('Stores → Countries'));
 });
 
-test('a click on a ghost adds it and pins it, its own ghosts show; a second click lets them go', async () => {
+test('a click on a ghost adds it, closes the ghosts and selects the new card; its (+) shows its own ghosts, a second click closes them', async () => {
   setup();
   await ready();
   await toCanvas();
   await waitFor(() => expect(el('orders')).not.toBeNull());
-  await userEvent.hover(plusOf(el('orders')!));
+  await userEvent.click(plusOf(el('orders')!));
   await userEvent.click(await waitFor(() => { const g = ghostEl('customers', 'customers'); expect(g).not.toBeNull(); return g!; }));
+  await waitFor(() => expect(el('customers', 'customers')).toHaveAttribute('data-focused'));
+  expect(ghosts()).toEqual([]);
+  await userEvent.click(plusOf(el('customers', 'customers')!));
   await waitFor(() => expect(ghostEl('countries', 'customers.countries')).not.toBeNull());
-  await userEvent.click(el('customers', 'customers')!);
+  await userEvent.click(plusOf(el('customers', 'customers')!));
   await waitFor(() => expect(ghostEl('countries', 'customers.countries')).toBeNull());
 });
 
@@ -621,8 +644,8 @@ test('a zoom step applies the new sizer height with no transition, and the trans
 
 test('hover first, then grab: the parent tree wire is still the stronger line when the parent is the closest target', async () => {
   await joinCountriesUnderCustomers();
-  // Hovering a (+) shows ghosts; grabbing drops them, which rebuilds the wires.
-  await userEvent.hover(plusOf(el('orders')!));
+  // Clicking a (+) shows ghosts; grabbing drops them, which rebuilds the wires.
+  await userEvent.click(plusOf(el('orders')!));
   await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
   const c = () => centre('countries', 'customers.countries');
   fireEvent.pointerDown(el('countries', 'customers.countries')!, pointer(c().x, c().y));
@@ -636,9 +659,9 @@ test('hover first, then grab: the parent tree wire is still the stronger line wh
   fireEvent.pointerUp(window, pointer(cu.x, cu.y, 0));
 });
 
-test('Escape in a drag only cancels the drag: the pinned card stays pinned', async () => {
+test('Escape in a drag only cancels the drag: the ghosts a (+) opened stay open', async () => {
   await joinCountriesUnderCustomers();
-  await userEvent.click(el('orders')!);
+  await userEvent.click(plusOf(el('orders')!));
   await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
   await userEvent.unhover(el('orders')!);
   const c = () => centre('countries', 'customers.countries');
@@ -737,22 +760,25 @@ test('no (+) when what can join is not accessible', () => {
   expect(document.querySelectorAll('[data-join-plus]')).toHaveLength(0);
 });
 
-test('hovering a card shows no ghost; its (+) does, and a ghost with nothing under it has no (+)', async () => {
+test('hovering a card or its (+) shows no ghost; clicking the (+) does, and a ghost with nothing under it has no (+)', async () => {
   small([mk('a'), mk('b')]);
   const card = document.querySelector<HTMLElement>('article')!;
   await userEvent.hover(card);
   await later(100);
   expect(document.querySelectorAll('article[data-ghost]')).toHaveLength(0);
   await userEvent.hover(plusOf(card));
+  await later(100);
+  expect(document.querySelectorAll('article[data-ghost]')).toHaveLength(0);
+  await userEvent.click(plusOf(card));
   await waitFor(() => expect(document.querySelectorAll('article[data-ghost]')).toHaveLength(1));
   expect(document.querySelector('article[data-ghost] [data-join-plus]')).toBeNull();
 });
 
-test('from the (+) to a ghost keeps the ghosts; to another card they go after the grace, and on the card itself they stay', async () => {
+test('the pointer moving from the (+) to a ghost, a card or another card never closes the ghosts', async () => {
   await joinCountriesUnderCustomers();
   await userEvent.unhover(el('countries', 'customers.countries')!);
   await later();
-  await userEvent.hover(plusOf(el('orders')!));
+  await userEvent.click(plusOf(el('orders')!));
   await waitFor(() => expect(ghostEl('products', 'products')).not.toBeNull());
   await userEvent.hover(el('orders')!);
   await later();
@@ -762,14 +788,13 @@ test('from the (+) to a ghost keeps the ghosts; to another card they go after th
   expect(ghostEl('products', 'products')).not.toBeNull();
   await userEvent.hover(el('stores', 'stores')!);
   await later();
-  expect(ghostEl('products', 'products')).toBeNull();
-  await userEvent.hover(plusOf(el('orders')!));
-  await waitFor(() => expect(ghostEl('products', 'products')).not.toBeNull());
-  await userEvent.unhover(el('orders')!);
-  await waitFor(() => expect(ghostEl('products', 'products')).toBeNull());
+  expect(ghostEl('products', 'products')).not.toBeNull();
+  await userEvent.unhover(el('stores', 'stores')!);
+  await later();
+  expect(ghostEl('products', 'products')).not.toBeNull();
 });
 
-test('clicking the (+) keeps the ghosts after the pointer leaves; a second click, Escape and the empty canvas let them go', async () => {
+test('clicking the (+) keeps the ghosts after the pointer leaves; a second click, Escape and the empty canvas let them go, and hovering never brings them back', async () => {
   setup();
   await ready();
   await toCanvas();
@@ -784,18 +809,19 @@ test('clicking the (+) keeps the ghosts after the pointer leaves; a second click
   await userEvent.click(plus());
   await waitFor(() => expect(ghosts()).toEqual([]));
   expect(plus()).toHaveAttribute('aria-expanded', 'false');
-  // The same hover does not bring them back; leaving and coming back does.
+  // Neither the same hover nor leaving and coming back opens them.
   fireEvent.pointerOver(plus());
   await later(100);
   expect(ghosts()).toEqual([]);
   await userEvent.unhover(plus());
   await userEvent.hover(plus());
-  await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
+  await later(100);
+  expect(ghosts()).toEqual([]);
   await userEvent.click(plus());
   await waitFor(() => expect(plus()).toHaveAttribute('aria-expanded', 'true'));
   await userEvent.keyboard('{Escape}');
-  await userEvent.unhover(plus());
   await waitFor(() => expect(ghosts()).toEqual([]));
+  expect(plus()).toHaveAttribute('aria-expanded', 'false');
   await userEvent.click(plus());
   await userEvent.unhover(plus());
   await later();
@@ -804,37 +830,40 @@ test('clicking the (+) keeps the ghosts after the pointer leaves; a second click
   await waitFor(() => expect(ghosts()).toEqual([]));
 });
 
-test('the (+) of a ghost adds the next level on hover, the ghost itself does not, and a click keeps the whole chain', async () => {
+test('the (+) of a ghost adds the next level on a click, not on a hover, and a second click takes it away again', async () => {
   setup();
   await ready();
   await toCanvas();
   await waitFor(() => expect(el('orders')).not.toBeNull());
-  await userEvent.hover(plusOf(el('orders')!));
+  await userEvent.click(plusOf(el('orders')!));
   await waitFor(() => expect(ghostEl('customers', 'customers')).not.toBeNull());
   await userEvent.hover(ghostEl('customers', 'customers')!);
   expect(ghostEl('countries', 'customers.countries')).toBeNull();
   await userEvent.hover(plusOf(ghostEl('customers', 'customers')!));
-  await waitFor(() => expect(ghostEl('countries', 'customers.countries')).not.toBeNull());
+  await later(100);
+  expect(ghostEl('countries', 'customers.countries')).toBeNull();
   await userEvent.click(plusOf(ghostEl('customers', 'customers')!));
+  await waitFor(() => expect(ghostEl('countries', 'customers.countries')).not.toBeNull());
   expect(plusOf(ghostEl('customers', 'customers')!)).toHaveAttribute('aria-expanded', 'true');
   await userEvent.unhover(ghostEl('customers', 'customers')!);
   await later();
   expect(ghostEl('countries', 'customers.countries')).not.toBeNull();
   expect(ghostEl('customers', 'customers')).not.toBeNull();
-  // A second click on it takes its level away again.
   await userEvent.click(plusOf(ghostEl('customers', 'customers')!));
   await waitFor(() => expect(ghostEl('countries', 'customers.countries')).toBeNull());
   expect(ghostEl('customers', 'customers')).not.toBeNull();
 });
 
-test('keyboard: focusing the (+) shows the ghosts and Enter keeps them', async () => {
+test('keyboard: focusing the (+) shows no ghosts, and Enter opens them and keeps them', async () => {
   setup();
   await ready();
   await toCanvas();
   await waitFor(() => expect(el('orders')).not.toBeNull());
   plusOf(el('orders')!).focus();
-  await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
+  await later(100);
+  expect(ghosts()).toEqual([]);
   await userEvent.keyboard('{Enter}');
+  await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
   expect(plusOf(el('orders')!)).toHaveAttribute('aria-expanded', 'true');
   fireEvent.pointerLeave(treeEl());
   await later();
@@ -851,7 +880,7 @@ test('pressing the (+) and moving does not start a drag, and a click on it does 
   await later(50);
   expect(document.querySelector('.dm-drag-ghost')).toBeNull();
   fireEvent.pointerUp(plus, pointer(120, 100, 0));
-  // Were the card select to run as well, the second toggle would let the pin go again.
+  // Were the card select to run as well, it would select the card; the (+) click only opens the ghosts.
   await userEvent.click(plus);
   await waitFor(() => expect(document.querySelectorAll('article[data-ghost]')).toHaveLength(1));
   expect(plus).toHaveAttribute('aria-expanded', 'true');
@@ -891,70 +920,75 @@ describe('on fake timers', () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); document.querySelectorAll('[data-outside]').forEach((n) => n.remove()); });
 
-  test('the ghosts go GHOST_GRACE_MS after the pointer left them, however much it moves over another card', () => {
+  test('the pointer moving over cards and leaving them never closes the ghosts a click opened', () => {
     twoCards();
     fireEvent.pointerOver(plusOf(card('a')));
+    expect(ghostCount()).toBe(0);
+    fireEvent.click(plusOf(card('a')));
     expect(ghostCount()).toBe(1);
     fireEvent.pointerOver(card('c'));
     tick(250);
     fireEvent.pointerOver(card('c').querySelector('.dm-node-title')!);
     tick(100);
-    fireEvent.pointerOver(card('c'));
-    tick(40);
-    // 390 ms after the first crossing: still there, 20 ms later gone.
+    fireEvent.pointerOver(document.querySelector('.dm-tree')!);
+    tick(1000);
     expect(ghostCount()).toBe(1);
-    tick(20);
-    expect(ghostCount()).toBe(0);
   });
 
-  test('focusing a (+) shows and dims, and tabbing out of the graph undoes both; tabbing to a ghost keeps them', () => {
+  test('focusing a (+) dims and shows no ghosts, and tabbing out of the graph undoes the dimming; ghosts a click opened stay', () => {
     dimmed();
     const outside = document.createElement('button');
     outside.setAttribute('data-outside', '');
     document.body.append(outside);
     act(() => plusOf(card('b')).focus());
-    expect(ghostCount()).toBe(1);
+    expect(ghostCount()).toBe(0);
     expect(fadedCount()).toBeGreaterThan(0);
+    fireEvent.click(plusOf(card('b')));
+    expect(ghostCount()).toBe(1);
     act(() => document.querySelector<HTMLElement>('article[data-ghost]')!.focus());
     tick(600);
     expect(ghostCount()).toBe(1);
+    expect(fadedCount()).toBeGreaterThan(0);
     act(() => plusOf(card('b')).focus());
     act(() => outside.focus());
     tick(600);
-    expect(ghostCount()).toBe(0);
     expect(fadedCount()).toBe(0);
+    expect(ghostCount()).toBe(1);
   });
 
-  test('a click on the empty canvas clears the ghosts that focus showed', () => {
+  test('a click on the empty canvas closes the ghosts a (+) opened', () => {
     twoCards();
     act(() => plusOf(card('a')).focus());
+    expect(ghostCount()).toBe(0);
+    fireEvent.click(plusOf(card('a')));
     expect(ghostCount()).toBe(1);
     fireEvent.click(document.querySelector('.dm-tree-sizer')!);
     expect(ghostCount()).toBe(0);
   });
 
-  test('a (+) closed with Enter shows its ghosts again once focus has left and returned', () => {
+  test('a (+) closed with Enter stays closed through a blur and a return of focus', () => {
     twoCards();
     const plus = plusOf(card('a'));
     act(() => plus.focus());
     fireEvent.click(plus);
+    expect(ghostCount()).toBe(1);
     fireEvent.click(plus);
     expect(ghostCount()).toBe(0);
     act(() => plus.blur());
     tick(600);
     act(() => plus.focus());
-    expect(ghostCount()).toBe(1);
+    expect(ghostCount()).toBe(0);
   });
 
-  test('returning to the window does not bring the ghosts or the dimming back while the pointer is elsewhere', () => {
+  test('returning to the window does not bring the dimming back while the pointer is elsewhere', () => {
     dimmed();
     const plus = plusOf(card('b'));
     act(() => plus.focus());
-    expect(ghostCount()).toBe(1);
+    expect(fadedCount()).toBeGreaterThan(0);
     const hasFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(false);
     act(() => plus.blur());
     tick(600);
-    expect(ghostCount()).toBe(0);
+    expect(fadedCount()).toBe(0);
     // The window comes back: the browser focuses the element it left on.
     act(() => plus.focus());
     hasFocus.mockReturnValue(true);
@@ -963,7 +997,8 @@ describe('on fake timers', () => {
     // A deliberate focus afterwards works again.
     act(() => plus.blur());
     act(() => plus.focus());
-    expect(ghostCount()).toBe(1);
+    expect(fadedCount()).toBeGreaterThan(0);
+    expect(ghostCount()).toBe(0);
   });
 
   test('a press on a (+) released on the card body does not select the card or add the ghost', () => {
@@ -989,11 +1024,11 @@ describe('on fake timers', () => {
     expect(ghostCount()).toBe(0);
     expect(fadedCount()).toBe(0);
   });
-  test('hovering a card keeps its dimming when the pointer came from another card across the gap, with or without a pin', () => {
-    for (const pinFirst of [false, true]) {
+  test('hovering a card keeps its dimming when the pointer came from another card across the gap, with or without a selection', () => {
+    for (const selectFirst of [false, true]) {
       cleanup();
       dimmed();
-      if (pinFirst) fireEvent.click(card('a'));
+      if (selectFirst) fireEvent.click(card('a'));
       fireEvent.pointerOver(card('b'));
       fireEvent.pointerOver(document.querySelector('.dm-tree')!);
       tick(100);
@@ -1006,22 +1041,24 @@ describe('on fake timers', () => {
   test('the dimming is held a full grace after the pointer leaves the cards, whatever the ghosts were doing', () => {
     dimmed();
     fireEvent.pointerOver(plusOf(card('b')));
+    fireEvent.click(plusOf(card('b')));
     fireEvent.pointerOver(card('c'));
     tick(390);
     expect(ghostCount()).toBe(1);
     fireEvent.pointerOver(document.querySelector('.dm-tree')!);
-    tick(15);
-    expect(ghostCount()).toBe(0);
-    tick(380);
+    tick(395);
+    expect(ghostCount()).toBe(1);
     expect(fadedCount()).toBeGreaterThan(0);
     tick(10);
     expect(fadedCount()).toBe(0);
+    expect(ghostCount()).toBe(1);
   });
 
-  test('a blur lets go of what focus showed, not of what the pointer holds', () => {
+  test('a blur lets go of the dimming focus set, not of what the pointer holds', () => {
     dimmed();
     act(() => plusOf(card('b')).focus());
-    expect(ghostCount()).toBe(1);
+    expect(ghostCount()).toBe(0);
+    expect(fadedCount()).toBeGreaterThan(0);
     // The pointer is on C, and a click there moves focus to it.
     fireEvent.pointerOver(card('c'));
     act(() => card('c').focus());
@@ -1036,6 +1073,7 @@ describe('on fake timers', () => {
     const plus = plusOf(card('b'));
     fireEvent.pointerOver(card('b'));
     act(() => plus.focus());
+    fireEvent.click(plus);
     expect(ghostCount()).toBe(1);
     vi.spyOn(document, 'hasFocus').mockReturnValue(false);
     act(() => plus.blur());
@@ -1049,6 +1087,7 @@ describe('on fake timers', () => {
     const plus = plusOf(card('b'));
     fireEvent.pointerOver(plus);
     act(() => plus.focus());
+    fireEvent.click(plus);
     const ghost = document.querySelector<HTMLElement>('article[data-ghost]')!;
     fireEvent.pointerOver(ghost);
     vi.spyOn(document, 'hasFocus').mockReturnValue(false);
@@ -1057,17 +1096,22 @@ describe('on fake timers', () => {
     expect(ghostCount()).toBe(1);
   });
 
-  test('letting go of a pin with the pointer gone leaves nothing dimmed', () => {
+  test('a click on a card selects it and opens no ghosts, and the pointer leaving keeps it selected', () => {
     dimmed();
     fireEvent.pointerOver(card('b'));
     fireEvent.click(card('b'));
+    expect(ghostCount()).toBe(0);
+    expect(card('b')).toHaveAttribute('data-focused');
     fireEvent.pointerOver(document.querySelector('.dm-tree')!);
-    expect(fadedCount()).toBeGreaterThan(0);
-    fireEvent.click(card('b'));
+    tick(600);
+    expect(ghostCount()).toBe(0);
     expect(fadedCount()).toBe(0);
+    expect(card('b')).toHaveAttribute('data-focused');
+    fireEvent.click(card('b'));
+    expect(card('b')).not.toHaveAttribute('data-focused');
   });
 
-  test('an anchor that left the tree does not hide the pin\'s ghosts', () => {
+  test('an anchor that left the tree does not hide the open ghosts', () => {
     const model = { marts: new Map(['a', 'b', 'c', 'd'].map((id) => [id, mk(id)])), sources: [], edges: [], contexts: [], failedStorages: [] } as unknown as Model;
     const joined = [src('b'), src('c'), src('d', 'b.d')] as unknown as Parameters<typeof MartsCanvas>[0]['sources'];
     const view = (columns: string[]) => (
@@ -1076,10 +1120,9 @@ describe('on fake timers', () => {
       </TooltipProvider>
     );
     const { rerender } = render(view(['id', 'b__x']));
-    fireEvent.click(card('a'));
-    act(() => plusOf(card('b')).focus());
+    fireEvent.click(plusOf(card('a')));
     expect(ghostCount()).toBe(1);
-    // B is taken out of the report while focus holds its ghosts.
+    // B is taken out of the report while the ghosts of A are open.
     rerender(view(['id']));
     expect(ghostCount()).toBe(2);
   });
@@ -1089,40 +1132,38 @@ describe('on fake timers', () => {
   const ghost = (id: string) => document.querySelector<HTMLElement>(`article[data-ghost][data-mart-id="${id}"]`);
   const emptyCanvas = () => document.querySelector<HTMLElement>('.dm-tree')!;
 
-  test('the (+) of a ghost of a pinned card adds the next level on hover, and only that level goes after the grace', () => {
+  test('the (+) of a ghost of an open card adds the next level on a click only, and a second click takes only that level away', () => {
     twoPluses();
     fireEvent.pointerOver(plusOf(card('a')));
     fireEvent.click(plusOf(card('a')));
     fireEvent.pointerOver(ghost('c')!);
     expect(ghost('e')).toBeNull();
     fireEvent.pointerOver(plusOf(ghost('c')!));
+    expect(ghost('e')).toBeNull();
+    fireEvent.click(plusOf(ghost('c')!));
     expect(ghost('e')).not.toBeNull();
     fireEvent.pointerOver(emptyCanvas());
-    tick(390);
+    tick(1000);
     expect(ghost('e')).not.toBeNull();
-    tick(20);
-    expect(ghost('e')).toBeNull();
-    expect(ghost('c')).not.toBeNull();
-    // The leave can come before the hover has committed.
-    act(() => { fireEvent.pointerOver(plusOf(ghost('c')!)); fireEvent.pointerLeave(emptyCanvas()); });
-    expect(ghost('e')).not.toBeNull();
-    tick(410);
+    fireEvent.click(plusOf(ghost('c')!));
     expect(ghost('e')).toBeNull();
     expect(ghost('c')).not.toBeNull();
   });
 
-  test('the (+) of a ghost of a pinned card adds the next level on focus, and a blur lets go of that level alone', () => {
+  test('the (+) of a ghost of an open card adds the next level on Enter, not on focus, and a blur leaves it', () => {
     twoPluses();
     fireEvent.click(plusOf(card('a')));
     act(() => plusOf(ghost('c')!).focus());
+    expect(ghost('e')).toBeNull();
+    fireEvent.click(plusOf(ghost('c')!));
     expect(ghost('e')).not.toBeNull();
     act(() => plusOf(ghost('c')!).blur());
-    tick(410);
-    expect(ghost('e')).toBeNull();
+    tick(600);
+    expect(ghost('e')).not.toBeNull();
     expect(ghost('c')).not.toBeNull();
   });
 
-  test('a pinned chain stays while the (+) of one of its own ghosts is hovered, and after it', () => {
+  test('an open chain stays while the (+) of one of its own ghosts is hovered, and after it', () => {
     small([mk('a'), mk('c'), mk('e'), mk('f')], undefined, { e: 'c.e', f: 'c.e.f' });
     fireEvent.click(plusOf(card('a')));
     fireEvent.click(plusOf(ghost('c')!));
@@ -1135,44 +1176,40 @@ describe('on fake timers', () => {
     expect(ghost('f')).not.toBeNull();
   });
 
-  test('a leave that comes before the (+) hover has committed still lets the ghosts go', () => {
+  test('a hover on a (+) opens nothing, and the pointer leaving right after it changes nothing', () => {
     twoPluses();
     act(() => { fireEvent.pointerOver(plusOf(card('a'))); fireEvent.pointerOver(emptyCanvas()); });
-    expect(ghostCount()).toBe(1);
+    expect(ghostCount()).toBe(0);
     tick(410);
     expect(ghostCount()).toBe(0);
   });
 
-  test('ghosts closed by a second click stay closed through a focus and blur elsewhere', () => {
+  test('ghosts closed by a second click stay closed through a hover, a focus and a blur', () => {
     twoPluses();
     fireEvent.pointerOver(plusOf(card('a')));
     fireEvent.click(plusOf(card('a')));
     fireEvent.click(plusOf(card('a')));
     expect(ghostCount()).toBe(0);
     act(() => plusOf(card('b')).focus());
-    expect(ghost('d')).not.toBeNull();
+    expect(ghostCount()).toBe(0);
     act(() => plusOf(card('b')).blur());
     tick(600);
     expect(ghostCount()).toBe(0);
     fireEvent.pointerOver(plusOf(card('a')));
     expect(ghostCount()).toBe(0);
-    // Focus on the closed (+) itself shows them, and its blur lets them go: the pointer on it does not hold them.
     act(() => plusOf(card('a')).focus());
-    expect(ghost('c')).not.toBeNull();
+    expect(ghostCount()).toBe(0);
     act(() => plusOf(card('a')).blur());
     tick(600);
     expect(ghostCount()).toBe(0);
-    fireEvent.pointerOver(card('a'));
-    fireEvent.pointerOver(plusOf(card('a')));
-    expect(ghost('c')).not.toBeNull();
   });
 
-  test('Escape and a click on the empty canvas keep the (+) under the pointer closed until the pointer has left it', () => {
-    for (const pinFirst of [false, true]) for (const letGo of [() => fireEvent.keyDown(document, { key: 'Escape' }), () => fireEvent.click(document.querySelector('.dm-tree-sizer')!)]) {
+  test('Escape and a click on the empty canvas close the ghosts, and neither a hover nor a focus brings them back', () => {
+    for (const letGo of [() => fireEvent.keyDown(document, { key: 'Escape' }), () => fireEvent.click(document.querySelector('.dm-tree-sizer')!)]) {
       cleanup();
       twoPluses();
       fireEvent.pointerOver(plusOf(card('a')));
-      if (pinFirst) fireEvent.click(plusOf(card('a')));
+      fireEvent.click(plusOf(card('a')));
       expect(ghostCount()).toBe(1);
       letGo();
       expect(ghostCount()).toBe(0);
@@ -1185,7 +1222,7 @@ describe('on fake timers', () => {
       expect(ghostCount()).toBe(0);
       fireEvent.pointerOver(emptyCanvas());
       fireEvent.pointerOver(plusOf(card('a')));
-      expect(ghostCount()).toBe(1);
+      expect(ghostCount()).toBe(0);
     }
   });
 
@@ -1198,19 +1235,21 @@ describe('on fake timers', () => {
     expect(fadedCount()).toBe(0);
   });
 
-  test('a blur gives back what the pointer holds, also on the card body', () => {
+  test('focus on another card\'s (+) neither opens its ghosts nor closes the open ones, and a blur changes nothing', () => {
     twoPluses();
     fireEvent.pointerOver(plusOf(card('a')));
     fireEvent.pointerOver(card('a'));
+    fireEvent.click(plusOf(card('a')));
     act(() => plusOf(card('b')).focus());
-    expect(ghost('d')).not.toBeNull();
+    expect(ghost('d')).toBeNull();
+    expect(ghost('c')).not.toBeNull();
     act(() => plusOf(card('b')).blur());
     tick(600);
     expect(ghost('d')).toBeNull();
     expect(ghost('c')).not.toBeNull();
   });
 
-  test('an anchor that left the tree does not stop the (+) of a ghost of the pin', () => {
+  test('an anchor that left the tree does not stop the (+) of a ghost of the open ghosts', () => {
     const model = { marts: new Map(['a', 'b', 'c', 'd', 'e'].map((id) => [id, mk(id)])), sources: [], edges: [], contexts: [], failedStorages: [] } as unknown as Model;
     const joined = [src('b'), src('c'), src('d', 'b.d'), src('e', 'c.e')] as unknown as Parameters<typeof MartsCanvas>[0]['sources'];
     const view = (columns: string[]) => (
@@ -1220,38 +1259,36 @@ describe('on fake timers', () => {
     );
     const { rerender } = render(view(['id', 'b__x']));
     fireEvent.click(plusOf(card('a')));
-    fireEvent.pointerOver(plusOf(card('b')));
-    expect(ghost('d')).not.toBeNull();
     rerender(view(['id']));
-    fireEvent.pointerOver(plusOf(ghost('c')!));
+    fireEvent.click(plusOf(ghost('c')!));
     expect(ghost('e')).not.toBeNull();
   });
 });
 
-test('while a card is pinned, another card\'s (+) shows its ghosts and the pin\'s come back after it; its body changes nothing; a click moves the pin', async () => {
+test('a card\'s (+) moves the ghosts to it and its body changes none; a click on a body selects that card', async () => {
   setup();
   await ready();
   await toCanvas();
   await waitFor(() => expect(el('orders')).not.toBeNull());
-  await userEvent.hover(plusOf(el('orders')!));
+  await userEvent.click(plusOf(el('orders')!));
   await userEvent.click(await waitFor(() => { const g = ghostEl('customers', 'customers'); expect(g).not.toBeNull(); return g!; }));
-  // The added card is pinned and shows its own ghosts.
+  // The added card is selected; its own ghosts wait for its (+).
+  await waitFor(() => expect(el('customers', 'customers')).toHaveAttribute('data-focused'));
+  expect(ghosts()).toEqual([]);
+  await userEvent.click(plusOf(el('customers', 'customers')!));
   await waitFor(() => expect(ghostEl('countries', 'customers.countries')).not.toBeNull());
   await userEvent.hover(el('orders')!);
   await later();
   expect(ghostEl('countries', 'customers.countries')).not.toBeNull();
-  await userEvent.hover(plusOf(el('orders')!));
+  await userEvent.click(plusOf(el('orders')!));
   await waitFor(() => expect(ghostEl('products', 'products')).not.toBeNull());
   expect(ghostEl('countries', 'customers.countries')).toBeNull();
-  await userEvent.unhover(el('orders')!);
-  await waitFor(() => expect(ghostEl('countries', 'customers.countries')).not.toBeNull());
-  expect(ghostEl('products', 'products')).toBeNull();
-  await userEvent.click(plusOf(el('orders')!));
+  await userEvent.click(el('orders')!);
   await waitFor(() => expect(el('orders')).toHaveAttribute('data-focused'));
+  expect(el('customers', 'customers')).not.toHaveAttribute('data-focused');
   await userEvent.unhover(el('orders')!);
   await later();
   expect(ghostEl('products', 'products')).not.toBeNull();
-  expect(ghostEl('countries', 'customers.countries')).toBeNull();
 });
 
 test('canvas cards watch the viewport, not the scrolling box', async () => {
