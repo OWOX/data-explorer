@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cachedFiltered, countFiltered, filteredKey, forgetFiltered, rememberFiltered } from '../api/filtered-counts';
 import { COUNT_CONCURRENCY } from '../config';
-import type { CardRules } from '../filters/card-rules';
+import type { GridRules } from '../filters/card-rules';
 import type { Model } from '../model/types';
 import type { TraverseFilter } from '../sdk/types';
 import { useServices } from '../state/store';
 import type { CountState } from './bands/cards';
 import { errorMessage } from './ErrorBox';
 
-type Wanted = { key: string; martId: string; rules: TraverseFilter[]; partial: boolean };
+type Wanted = { key: string; martId: string; rules: TraverseFilter[]; partial: boolean; /** The grid's own read will answer this path: no read here. */ awaitGrid: boolean };
 const localDay = (d: Date): string => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 /** What the reads last said about a path: for `key`, plus the last value it showed, kept dimmed while a new key is read. */
 type Status = { key: string; state: CountState; last: number | null | undefined };
@@ -16,7 +16,7 @@ type Status = { key: string; state: CountState; last: number | null | undefined 
 export type FilteredCount = { /** Absent for a card with no rule that could be counted. */ state?: CountState; partial: boolean };
 
 /** The filtered count of each card that has rules, read once per rule set and `COUNT_CONCURRENCY` at a time. */
-export function useFilteredCounts(model: Model | null, byPath: ReadonlyMap<string, CardRules> | null) {
+export function useFilteredCounts(model: Model | null, byPath: ReadonlyMap<string, GridRules> | null) {
   const { ctx, schemas } = useServices();
   const [status, setStatus] = useState(new Map<string, Status>());
   const [tick, setTick] = useState(0);
@@ -39,10 +39,12 @@ export function useFilteredCounts(model: Model | null, byPath: ReadonlyMap<strin
     if (!model || !byPath) return out;
     for (const [path, c] of byPath) {
       const key = c.rules.length > 0 ? filteredKey(c.martId, c.rules, model.marts.get(c.martId)?.dataLastUpdatedAt ?? null, new Date(`${day}T12:00:00`)) : '';
-      out.set(path, { key, martId: c.martId, rules: c.rules, partial: c.partial });
+      out.set(path, { key, martId: c.martId, rules: c.rules, partial: c.partial, awaitGrid: !!c.awaitGrid });
     }
     return out;
   }, [model, byPath, day]);
+  // A Refresh that the grid answers: the grid's next `byPath` carries `awaitGrid`, but this render's `wanted` does not yet.
+  const waiting = useRef<{ wanted: ReadonlyMap<string, Wanted>; paths: Set<string> } | null>(null);
   const wantedRef = useRef(wanted);
   useEffect(() => { wantedRef.current = wanted; }, [wanted]);
 
@@ -69,7 +71,13 @@ export function useFilteredCounts(model: Model | null, byPath: ReadonlyMap<strin
     queue.current = queue.current.filter((j) => wanted.get(j.path)?.key === j.key);
     for (const path of [...requested.current.keys()]) if (!wanted.has(path)) requested.current.delete(path);
     for (const [path, w] of wanted) {
-      if (w.rules.length === 0 || requested.current.get(path) === w.key || cachedFiltered(ctx, w.key) !== undefined) continue;
+      if (w.rules.length === 0) continue;
+      if (w.awaitGrid || (waiting.current?.wanted === wanted && waiting.current.paths.has(path))) {
+        requested.current.delete(path);
+        queue.current = queue.current.filter((j) => j.path !== path);
+        continue;
+      }
+      if (requested.current.get(path) === w.key || cachedFiltered(ctx, w.key) !== undefined) continue;
       requested.current.set(path, w.key);
       queue.current = queue.current.filter((j) => j.path !== path);
       const job = { ...w, path };
@@ -85,8 +93,9 @@ export function useFilteredCounts(model: Model | null, byPath: ReadonlyMap<strin
     setTick((t) => t + 1);
   }, []);
 
-  const forget = useCallback((martId: string) => {
+  const forget = useCallback((martId: string, awaitMain = false) => {
     forgetFiltered(ctx, martId);
+    waiting.current = awaitMain ? { wanted: wantedRef.current, paths: new Set(['']) } : null;
     for (const [path, w] of wantedRef.current) {
       if (w.martId !== martId || w.rules.length === 0) continue;
       requested.current.delete(path);

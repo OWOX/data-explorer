@@ -8,7 +8,7 @@ import { Tooltip } from '../Tooltip';
 import { ConfigMenuSlot } from '../../charts/menuSlot';
 import { MartGrid, type NoKey } from '../explorer/MartGrid';
 import { Band } from './Band';
-import type { CardRules } from '../../filters/card-rules';
+import type { GridRules } from '../../filters/card-rules';
 import { useFillHeight } from './useFillHeight';
 import { ViewSwitch, type SwitchOption } from './ViewSwitch';
 
@@ -23,7 +23,7 @@ const HINT_FULL = 'The rows of the selected data mart. Exit full screen to see a
 /** A key a read cannot name (inside a RECORD, or calculated) cannot be filtered on, so a row cannot be opened: the hint does not offer it. */
 const HINT_NO_OPEN = 'The rows of the selected data mart.';
 
-export function DataBand({ model, folded, onFold, loading = null, fullScreen, onCardRules, onCount, onFilteredTotal, onForgetFiltered, onCardHold, onRecount }: { model: Model; folded: boolean; onFold: () => void; loading?: number | null; fullScreen?: { on: boolean; onToggle: () => void }; /** Told the rules each card of the report counts, by alias path; null when the grid goes away. */ onCardRules?: (rules: { martId: string; byPath: ReadonlyMap<string, CardRules> } | null) => void; /** The grid's total for the plain, unfiltered main mart: the card's row count. */ onCount?: (martId: string, n: number) => void; /** The grid's total for a plain read with main rules: the main card's filtered count under that key. */ onFilteredTotal?: (key: string, n: number) => void; /** The grid's Refresh: the filtered counts of this mart are read again. */ onForgetFiltered?: (martId: string) => void; /** The grid's Refresh will be answered by its own total: the card's count is dimmed meanwhile. */ onCardHold?: (martId: string) => void; /** The grid's Refresh when its own total cannot refresh the card: the card is counted again. */ onRecount?: (martId: string) => void }) {
+export function DataBand({ model, folded, onFold, loading = null, fullScreen, onCardRules, onCount, onFilteredTotal, onForgetFiltered, onCardHold, onRecount }: { model: Model; folded: boolean; onFold: () => void; loading?: number | null; fullScreen?: { on: boolean; onToggle: () => void }; /** Told the rules each card of the report counts, by alias path; null when the grid goes away. */ onCardRules?: (rules: { martId: string; byPath: ReadonlyMap<string, GridRules> } | null) => void; /** The grid's total for the plain, unfiltered main mart: the card's row count. */ onCount?: (martId: string, n: number) => void; /** The grid's total for a plain read with main rules: the main card's filtered count under that key. */ onFilteredTotal?: (key: string, n: number) => void; /** The grid's Refresh: the filtered counts of this mart are read again. */ onForgetFiltered?: (martId: string, awaitMain: boolean) => void; /** The grid's Refresh will be answered by its own total: the card's count is dimmed meanwhile. */ onCardHold?: (martId: string) => void; /** The grid's Refresh when its own total cannot refresh the card: the card is counted again. */ onRecount?: (martId: string) => void }) {
   useFillHeight('band-data');
   const [{ selection, grids }, dispatch] = useStore();
   const { martId } = selection;
@@ -37,8 +37,8 @@ export function DataBand({ model, folded, onFold, loading = null, fullScreen, on
   const gridMart = gridId ? model.marts.get(gridId) : undefined;
   const [rows, setRows] = useState<{ id: string; label: string; grouped: boolean; noKey: NoKey; stale: boolean } | null>(null);
   const showRows = useCallback((label: string | null, grouped = false, noKey: NoKey = false, stale = false) => { if (gridId) setRows(label === null ? null : { id: gridId, label, grouped, noKey, stale }); }, [gridId]);
-  const showRules = useCallback((byPath: ReadonlyMap<string, CardRules> | null) => { if (gridId) onCardRules?.(byPath && { martId: gridId, byPath }); }, [gridId, onCardRules]);
-  const forgetFiltered = useCallback(() => { if (gridId) onForgetFiltered?.(gridId); }, [gridId, onForgetFiltered]);
+  const showRules = useCallback((byPath: ReadonlyMap<string, GridRules> | null) => { if (gridId) onCardRules?.(byPath && { martId: gridId, byPath }); }, [gridId, onCardRules]);
+  const forgetFiltered = useCallback((awaitMain: boolean) => { if (gridId) onForgetFiltered?.(gridId, awaitMain); }, [gridId, onForgetFiltered]);
   const showTotal = useCallback((n: number) => { if (gridId) onCount?.(gridId, n); }, [gridId, onCount]);
   const holdCard = useCallback(() => { if (gridId) onCardHold?.(gridId); }, [gridId, onCardHold]);
   const recountCard = useCallback(() => { if (gridId) onRecount?.(gridId); }, [gridId, onRecount]);

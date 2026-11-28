@@ -4,6 +4,9 @@ import type { TraverseFilter } from '../sdk/types';
 /** One card's own rules: the main card's at path '', a joined card's at its alias path. */
 export type CardRules = { martId: string; rules: TraverseFilter[]; /** A rule on this card's mart could not be counted on the mart alone. */ partial: boolean };
 
+/** What the grid tells the page: `awaitGrid` is set on the main card's entry while the grid's own read will answer it (not part of any cache key). */
+export type GridRules = CardRules & { awaitGrid?: boolean };
+
 /**
  * The rules each card counts, by alias path. `schema` is the grid's blended schema (main fields plus joined ones), `filters` the grid's
  * traverse filters (`toTraverseFilters` output), `mainId` the main mart. A path with no rule and nothing partial is absent.

@@ -7,7 +7,7 @@ import { joinedMartIds } from '../state/join-plan';
 import { sourceOfModel, useServices, useStore } from '../state/store';
 import { CardBands } from './bands/CardBands';
 import { DataBand } from './bands/DataBand';
-import type { CardRules } from '../filters/card-rules';
+import type { GridRules } from '../filters/card-rules';
 import { RowBand } from './bands/RowBand';
 import { LoadingBands } from './bands/LoadingBands';
 import { ErrorBox } from './ErrorBox';
@@ -73,7 +73,7 @@ function AppBody() {
   // Full screen shows the Data band alone. It is never saved: a page always opens in the normal layout.
   const [fs, setFs] = useState(false);
   // The rules each card of the report counts, told by the grid for the cards. Memory only: no save, no Undo step.
-  const [cardRulesOf, setCardRulesOf] = useState<{ martId: string; byPath: ReadonlyMap<string, CardRules> } | null>(null);
+  const [cardRulesOf, setCardRulesOf] = useState<{ martId: string; byPath: ReadonlyMap<string, GridRules> } | null>(null);
   const [touched, setTouched] = useState<Partial<Record<Fold, boolean>>>({});
   const [linkFolds, setLinkFolds] = useState<Partial<Record<Fold, boolean>>>({});
   const folded = (band: Fold) => touched[band] ?? linkFolds[band] ?? folds[band] ?? DEFAULT_FOLDED[band];

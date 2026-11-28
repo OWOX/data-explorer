@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
+import { StrictMode, useEffect, useState } from 'react';
 import { act, render, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useFilteredCounts } from '../useFilteredCounts';
 import { loadModel } from '../../api/model';
 import { filteredKey } from '../../api/filtered-counts';
-import type { CardRules } from '../../filters/card-rules';
+import type { CardRules, GridRules } from '../../filters/card-rules';
 import type { Model } from '../../model/types';
 import type { Ctx, TraverseOptions } from '../../sdk/types';
 import { createMockCtx } from '../../sdk/mock/ctx';
@@ -13,13 +14,13 @@ import { DataBand } from '../bands/DataBand';
 import { TooltipProvider } from '../Tooltip';
 
 // Every traverseData call is a billed warehouse run: the cards count their own rules, the grid reads no scorecard for them.
-async function setup(grid: GridState, opts: { noKey?: boolean } = {}) {
+async function setup(grid: GridState, opts: { noKey?: boolean; failGrid?: boolean; strict?: boolean; wired?: boolean } = {}) {
   const fixtures = structuredClone(demoFixtures());
   if (opts.noKey) for (const f of fixtures.marts.find((m) => m.id === 'orders')!.fields) f.isPrimaryKey = false;
   const base = createMockCtx(fixtures, { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
-  const ctx: Ctx = { ...base, owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); return real(id, o); } } } };
+  const ctx: Ctx = { ...base, owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); if (opts.failGrid && id === 'orders' && o.limit !== 1 && o.filter?.length) return Promise.reject(new Error('grid read failed')); return real(id, o); } } } };
   const model: Model = await loadModel(ctx);
   const rules: (Map<string, CardRules> | null)[] = [];
   const spies = {
@@ -31,9 +32,20 @@ async function setup(grid: GridState, opts: { noKey?: boolean } = {}) {
     useEffect(() => { dispatch({ type: 'selectMart', id: 'orders', sourceOf: sourceOfModel(model) }); dispatch({ type: 'saveGrid', martId: 'orders', grid }); }, [dispatch]);
     return null;
   }
-  const mount = () => render(<AppServices ctx={ctx}><StoreProvider><TooltipProvider><Probe /><DataBand model={model} folded={false} onFold={() => undefined} {...spies} /></TooltipProvider></StoreProvider></AppServices>);
+  // With `wired`, the band is joined to the real hook, as App does.
+  const counts: { current: ReturnType<typeof useFilteredCounts> | null } = { current: null };
+  function Wired() {
+    const [rulesOf, setRules] = useState<{ martId: string; byPath: ReadonlyMap<string, GridRules> } | null>(null);
+    const c = useFilteredCounts(model, rulesOf?.byPath ?? null);
+    counts.current = c;
+    return <DataBand model={model} folded={false} onFold={() => undefined} {...spies} onCardRules={(r) => { spies.onCardRules(r); setRules(r); }} onFilteredTotal={c.seed} onForgetFiltered={c.forget} />;
+  }
+  const band = opts.wired ? <Wired /> : <DataBand model={model} folded={false} onFold={() => undefined} {...spies} />;
+  const tree = <AppServices ctx={ctx}><StoreProvider><TooltipProvider><Probe />{band}</TooltipProvider></StoreProvider></AppServices>;
+  const mount = () => render(opts.strict ? <StrictMode>{tree}</StrictMode> : tree);
+  const filteredReads = () => queries.filter((q) => q.limit === 1 && q.includeTotalRowCount && q.filter?.length);
   const total = async (filter?: TraverseOptions['filter']) => (await real('orders', { column: ['id'], limit: 1, includeTotalRowCount: true, ...(filter ? { filter } : {}) })).totalRowCount as number;
-  return { queries, rules, spies, mount, model, total, scoreReads: () => queries.filter((q) => q.uniqueCount?.length) };
+  return { queries, rules, spies, mount, counts, filteredReads, model, total, scoreReads: () => queries.filter((q) => q.uniqueCount?.length) };
 }
 
 const data = () => document.getElementById('band-data')!;
@@ -107,7 +119,7 @@ test('Refresh with a main filter forgets the filtered counts and does not hold t
   await waitFor(() => expect(t.spies.onFilteredTotal).toHaveBeenCalled());
   await calm();
   await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
-  expect(t.spies.onForgetFiltered).toHaveBeenCalledWith('orders');
+  expect(t.spies.onForgetFiltered).toHaveBeenCalledWith('orders', true);
   expect(t.spies.onCardHold).not.toHaveBeenCalled();
 });
 
@@ -121,4 +133,45 @@ test('told again only when the rules change, and null when the grid goes away', 
   expect(t.rules.slice(0, told).every((r) => r !== null)).toBe(true);
   view.unmount();
   expect(t.rules[t.rules.length - 1]).toBeNull();
+});
+
+test('under StrictMode the last onCardRules call holds the rules, not null', async () => {
+  const t = await setup({ ...plain, filters: paid }, { strict: true });
+  t.mount();
+  await waitFor(rowsShown);
+  await calm();
+  expect(last(t)).not.toBeNull();
+  expect([...last(t).keys()]).toEqual(['']);
+});
+
+const mainCard = (t: { counts: { current: ReturnType<typeof useFilteredCounts> | null } }) => t.counts.current?.filtered.get('')?.state;
+
+test('a main filter in a plain Table sends the grid read alone, and the card takes the grid total', async () => {
+  const t = await setup({ ...plain, filters: paid }, { wired: true });
+  t.mount();
+  await waitFor(() => expect(mainCard(t)).toEqual({ state: 'ok', value: expect.any(Number) }));
+  await calm();
+  expect(t.filteredReads()).toHaveLength(0);
+  expect(t.queries.filter((q) => q.filter?.length && q.limit !== 1)).toHaveLength(1);
+  expect((mainCard(t) as { value: number }).value).toBe(await t.total(last(t).get('')!.rules));
+});
+
+test('when the grid read fails, one count read follows', async () => {
+  const t = await setup({ ...plain, filters: paid }, { wired: true, failGrid: true });
+  t.mount();
+  await waitFor(() => expect(t.filteredReads()).toHaveLength(1));
+  await waitFor(() => expect(mainCard(t)).toEqual({ state: 'ok', value: expect.any(Number) }));
+});
+
+test('Refresh with a main filter in a plain Table sends no filtered count read, and the card ends ok', async () => {
+  const t = await setup({ ...plain, filters: paid }, { wired: true });
+  t.mount();
+  await waitFor(() => expect(mainCard(t)).toEqual({ state: 'ok', value: expect.any(Number) }));
+  await calm();
+  const before = t.queries.length;
+  await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
+  await calm();
+  await waitFor(() => expect(mainCard(t)).toEqual({ state: 'ok', value: expect.any(Number) }));
+  expect(t.queries.slice(before).filter((q) => q.limit === 1 && q.includeTotalRowCount)).toHaveLength(0);
+  expect(t.queries.slice(before).filter((q) => q.filter?.length && q.limit !== 1)).toHaveLength(1);
 });

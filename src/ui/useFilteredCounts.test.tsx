@@ -141,3 +141,31 @@ describe('past midnight', () => {
     expect(traverseData).toHaveBeenLastCalledWith('a', expect.anything());
   });
 });
+
+test('a path the grid will answer sends no read, and one the grid stops answering is read', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ id: 1 }], 2, 7));
+  const model = modelOf(['a']);
+  const { result, rerender } = renderHook(({ byPath }) => useFilteredCounts(model, byPath), { wrapper: setup(traverseData), initialProps: { byPath: new Map([['', { ...rulesOf('a'), awaitGrid: true }]]) } });
+  await new Promise((r) => setTimeout(r, 30));
+  expect(traverseData).not.toHaveBeenCalled();
+  expect(result.current.filtered.get('')?.state).toEqual({ state: 'queued' });
+  rerender({ byPath: new Map([['', { ...rulesOf('a'), awaitGrid: false }]]) });
+  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 7 }));
+  expect(traverseData).toHaveBeenCalledTimes(1);
+});
+
+test('forget with the grid answering reads nothing until the path stops awaiting it', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ id: 1 }], 2, 7));
+  const model = modelOf(['a']);
+  const first = new Map([['', rulesOf('a')]]);
+  const { result, rerender } = renderHook(({ byPath }) => useFilteredCounts(model, byPath), { wrapper: setup(traverseData), initialProps: { byPath: first } });
+  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 7 }));
+  act(() => result.current.forget('a', true));
+  await new Promise((r) => setTimeout(r, 30));
+  expect(traverseData).toHaveBeenCalledTimes(1);
+  rerender({ byPath: new Map([['', { ...rulesOf('a'), awaitGrid: true }]]) });
+  await new Promise((r) => setTimeout(r, 30));
+  expect(traverseData).toHaveBeenCalledTimes(1);
+  rerender({ byPath: new Map([['', rulesOf('a')]]) });
+  await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+});
