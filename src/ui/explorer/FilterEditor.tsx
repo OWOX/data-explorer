@@ -143,7 +143,9 @@ function OperatorForm({ field, value, onApply, onClear, note, values, startOp }:
   // The zones the editor opened with, held per input: clearing and retyping a value keeps its zone, and a bound with none takes the other's.
   const [zones, setZones] = useState<Record<string, string | undefined>>(() => {
     const o = value?.op === op ? value.value : undefined;
-    return typeof o === 'object' && o !== null ? { from: zoneOf((o as { from?: unknown }).from), to: zoneOf((o as { to?: unknown }).to) } : { v: zoneOf(o) };
+    // A value opened without a zone holds '' (no zone): only a bound that opened empty takes the other bound's zone.
+    const held = (x: unknown) => zoneOf(x) ?? (x === undefined || x === null || String(x) === '' ? undefined : '');
+    return typeof o === 'object' && o !== null ? { from: held((o as { from?: unknown }).from), to: held((o as { to?: unknown }).to) } : { v: held(o) };
   });
   const zoneFor = (k: 'v' | 'from' | 'to') => zones[k] ?? (k === 'from' ? zones.to : k === 'to' ? zones.from : undefined);
   /** An edited datetime-local value, in the space form with seconds, keeping the zone the input holds. */

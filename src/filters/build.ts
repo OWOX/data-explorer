@@ -20,7 +20,7 @@ const numeric = (v: unknown) => filled(v) && Number.isFinite(Number(v));
 /** The backend's IN_LIST_MAX_VALUES. */
 const IN_LIST_MAX = 500;
 // Newer JS engines accept `(?i:...)` modifier groups; the warehouses mostly do not, so they stay incomplete everywhere.
-const MODIFIER_GROUP = /(?<!\\)\(\?[a-zA-Z]*(?:-[a-zA-Z]*)?:/;
+const MODIFIER_GROUP = /(?<!\\)\(\?(?:[a-zA-Z]+(?:-[a-zA-Z]*)?|-[a-zA-Z]+):/;
 const validRegex = (v: string) => { try { const r = jsRegexSource(v); if (MODIFIER_GROUP.test(r.source)) return false; new RegExp(r.source, r.flags); return true; } catch { return false; } };
 const realDate = (y: number, m: number, d: number) => { const dt = new Date(Date.UTC(y, m - 1, d)); return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d; };
 const DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -28,7 +28,7 @@ const DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
 const STAMP = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,6})?(Z| UTC|[+-](?:0\d|1[0-4]):[0-5]\d)?)?)$/;
 /** Types that carry a zone of their own take any zone; a plain TIMESTAMP takes only UTC; every other type takes none. */
 const ZONED_TYPES = new Set(['TIMESTAMPTZ', 'TIMESTAMP WITH TIME ZONE', 'TIMESTAMP_TZ', 'TIMESTAMP_LTZ', 'TIMESTAMP WITH LOCAL TIME ZONE']);
-const UTC_ZONES = new Set(['Z', ' UTC', '+00:00']);
+const UTC_ZONES = new Set(['Z', ' UTC', '+00:00', '-00:00']);
 function zoneAllowed(zone: string, type: string): boolean {
   const t = normalizeType(type);
   return ZONED_TYPES.has(t) || (t === 'TIMESTAMP' && UTC_ZONES.has(zone));

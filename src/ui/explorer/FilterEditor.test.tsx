@@ -459,3 +459,11 @@ test('a new To bound takes the From bound zone', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
   expect(onApply).toHaveBeenCalledWith({ field: 'created_at', op: 'between', value: { from: '2024-01-01 10:00:00+02:00', to: '2024-01-05 10:00:00+02:00' } });
 });
+
+test('a loaded bound without a zone keeps none: no note beside it, and Apply sends it as loaded', async () => {
+  const { onApply } = open(ts, { field: 'created_at', op: 'between', value: { from: '2024-01-01 00:00:00+02:00', to: '2024-01-31 23:59:00' } });
+  expect(screen.getAllByTestId('zone-note')).toHaveLength(1);
+  fireEvent.change(screen.getByLabelText('To'), { target: { value: '2024-01-30T23:59' } });
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledWith({ field: 'created_at', op: 'between', value: { from: '2024-01-01 00:00:00+02:00', to: '2024-01-30T23:59' } });
+});

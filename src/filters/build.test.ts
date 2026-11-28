@@ -173,6 +173,8 @@ describe('is any of / is none of', () => {
     expect(isComplete({ field: 'status', op: 'regex', value: '^a(' }, str)).toBe(false);
     expect(isComplete({ field: 'status', op: 'not_regex', value: '[' }, str)).toBe(false);
     expect(isComplete({ field: 'status', op: 'regex', value: '^a.*' }, str)).toBe(true);
+    expect(isComplete({ field: 'status', op: 'regex', value: '^(?:foo|bar)$' }, str)).toBe(true);
+    expect(isComplete({ field: 'status', op: 'regex', value: '(?-i:foo)' }, str)).toBe(false);
   });
   test('regex rules go out as they are', () => {
     expect(toTraverseFilter({ field: 'status', op: 'regex', value: '^a.*' }, str)).toEqual({ column: 'status', operator: 'regex', value: '^a.*' });
