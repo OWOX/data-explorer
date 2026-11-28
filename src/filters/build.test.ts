@@ -115,13 +115,67 @@ describe('dropOrphanHaving', () => {
 });
 
 describe('a comma in a text eq/neq', () => {
-  const sf = (list?: true): ColumnFilter => ({ field: 'status', op: 'eq', value: 'San Francisco, CA', ...(list ? { list } : {}) });
-  test('stays one exact value without the list marker (chart click, join, saved rule)', () => {
-    expect(toTraverseFilter(sf(), str)).toEqual({ column: 'status', operator: 'eq', value: 'San Francisco, CA' });
-    expect(toTraverseFilter({ ...sf(), op: 'neq' }, str)).toEqual({ column: 'status', operator: 'neq', value: 'San Francisco, CA' });
+  test('is part of the one exact value', () => {
+    expect(toTraverseFilter({ field: 'status', op: 'eq', value: 'San Francisco, CA' }, str)).toEqual({ column: 'status', operator: 'eq', value: 'San Francisco, CA' });
+    expect(toTraverseFilter({ field: 'status', op: 'neq', value: 'San Francisco, CA' }, str)).toEqual({ column: 'status', operator: 'neq', value: 'San Francisco, CA' });
   });
-  test('a marked rule is a list: eq is in, neq is not_in', () => {
-    expect(toTraverseFilter({ field: 'status', op: 'eq', value: 'a, b, ', list: true }, str)).toEqual({ column: 'status', operator: 'in', value: ['a', 'b'] });
-    expect(toTraverseFilter({ field: 'status', op: 'neq', value: 'a, b', list: true }, str)).toEqual({ column: 'status', operator: 'not_in', value: ['a', 'b'] });
+});
+
+describe('is any of / is none of', () => {
+  const num: Field = { name: 'n', alias: null, type: 'INT64', category: 'number', description: null, isPrimaryKey: false };
+  const day: Field = { name: 'd', alias: null, type: 'DATE', category: 'date', description: null, isPrimaryKey: false };
+  const ts: Field = { name: 't', alias: null, type: 'TIMESTAMP', category: 'date', description: null, isPrimaryKey: false };
+  const clock: Field = { name: 'c', alias: null, type: 'TIME', category: 'time', description: null, isPrimaryKey: false };
+  test('a string list is in / not_in, a trailing comma ignored, one value still a 1-element array', () => {
+    expect(toTraverseFilter({ field: 'status', op: 'in', value: 'a, b, ' }, str)).toEqual({ column: 'status', operator: 'in', value: ['a', 'b'] });
+    expect(toTraverseFilter({ field: 'status', op: 'not_in', value: 'a,b' }, str)).toEqual({ column: 'status', operator: 'not_in', value: ['a', 'b'] });
+    expect(toTraverseFilter({ field: 'status', op: 'in', value: 'a' }, str)).toEqual({ column: 'status', operator: 'in', value: ['a'] });
+  });
+  test('numbers are sent as numbers, dates as typed, datetimes and times with seconds', () => {
+    expect(toTraverseFilter({ field: 'n', op: 'in', value: '1, 2.5' }, num)).toEqual({ column: 'n', operator: 'in', value: [1, 2.5] });
+    expect(toTraverseFilter({ field: 'd', op: 'not_in', value: '2026-01-01, 2026-01-02' }, day)).toEqual({ column: 'd', operator: 'not_in', value: ['2026-01-01', '2026-01-02'] });
+    expect(toTraverseFilter({ field: 't', op: 'in', value: '2026-01-01T10:00, 2026-01-02T11:30' }, ts)).toEqual({ column: 't', operator: 'in', value: ['2026-01-01 10:00:00', '2026-01-02 11:30:00'] });
+    expect(toTraverseFilter({ field: 'c', op: 'in', value: '10:00, 11:30' }, clock)).toEqual({ column: 'c', operator: 'in', value: ['10:00:00', '11:30:00'] });
+  });
+  test('complete with one token; numbers need every token numeric', () => {
+    expect(isComplete({ field: 'status', op: 'in', value: ', ' }, str)).toBe(false);
+    expect(isComplete({ field: 'status', op: 'in', value: 'a' }, str)).toBe(true);
+    expect(isComplete({ field: 'n', op: 'in', value: '1, 2' }, num)).toBe(true);
+    expect(isComplete({ field: 'n', op: 'in', value: '1, x' }, num)).toBe(false);
+  });
+  test('on is an eq with the same value shape as the other date rules', () => {
+    expect(toTraverseFilter({ field: 'd', op: 'on', value: '2026-01-01' }, day)).toEqual({ column: 'd', operator: 'eq', value: '2026-01-01' });
+    // A datetime column has no single moment: on a day is the whole day.
+    expect(toTraverseFilter({ field: 't', op: 'on', value: '2026-01-01' }, ts)).toEqual({ column: 't', operator: 'between', value: { from: '2026-01-01 00:00:00', to: '2026-01-01 23:59:59' } });
+    expect(toTraverseFilter({ field: 'c', op: 'on', value: '10:00' }, clock)).toEqual({ column: 'c', operator: 'eq', value: '10:00:00' });
+  });
+  test('list entries on date and time columns must be real dates and clock times', () => {
+    expect(isComplete({ field: 'd', op: 'in', value: '2026-01-01, 2026-02-28' }, day)).toBe(true);
+    expect(isComplete({ field: 'd', op: 'in', value: '2026-02-30' }, day)).toBe(false);
+    expect(isComplete({ field: 'd', op: 'in', value: '2026-13-01' }, day)).toBe(false);
+    expect(isComplete({ field: 'd', op: 'in', value: '2026-01-01 10:00' }, day)).toBe(false);
+    expect(isComplete({ field: 't', op: 'in', value: '2026-01-01, 2026-01-01 10:00:00, 2026-01-01T10:00' }, ts)).toBe(true);
+    expect(isComplete({ field: 't', op: 'in', value: 'yesterday' }, ts)).toBe(false);
+    expect(isComplete({ field: 'c', op: 'in', value: '10:00, 23:59:59' }, clock)).toBe(true);
+    expect(isComplete({ field: 'c', op: 'in', value: '24:00' }, clock)).toBe(false);
+  });
+  test('a list holds at most 500 values', () => {
+    const many = (n: number) => Array.from({ length: n }, (_, i) => `v${i}`).join(', ');
+    expect(isComplete({ field: 'status', op: 'in', value: many(500) }, str)).toBe(true);
+    expect(isComplete({ field: 'status', op: 'in', value: many(501) }, str)).toBe(false);
+  });
+  test('the 500 cap counts parsed values, not commas', () => {
+    const quoted = (n: number) => Array.from({ length: n }, (_, i) => `"v, ${i}"`).join(', ');
+    expect(isComplete({ field: 'status', op: 'in', value: quoted(500) }, str)).toBe(true);
+    expect(isComplete({ field: 'status', op: 'in', value: quoted(501) }, str)).toBe(false);
+  });
+  test('a regex that does not compile is incomplete', () => {
+    expect(isComplete({ field: 'status', op: 'regex', value: '^a(' }, str)).toBe(false);
+    expect(isComplete({ field: 'status', op: 'not_regex', value: '[' }, str)).toBe(false);
+    expect(isComplete({ field: 'status', op: 'regex', value: '^a.*' }, str)).toBe(true);
+  });
+  test('regex rules go out as they are', () => {
+    expect(toTraverseFilter({ field: 'status', op: 'regex', value: '^a.*' }, str)).toEqual({ column: 'status', operator: 'regex', value: '^a.*' });
+    expect(toTraverseFilter({ field: 'status', op: 'not_regex', value: 'x' }, str)).toEqual({ column: 'status', operator: 'not_regex', value: 'x' });
   });
 });

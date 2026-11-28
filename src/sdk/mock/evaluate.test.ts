@@ -24,3 +24,11 @@ test.each([
 ] as const)('%o → %s', (f, expected) => {
   expect(matchesFilter(row, f as never, now)).toBe(expected);
 });
+
+test('regex matches the text and never a NULL; not_regex keeps a NULL', () => {
+  const r = { name: 'Alice', gone: null };
+  expect(matchesFilter(r, { column: 'name', operator: 'regex', value: '^Al' } as never)).toBe(true);
+  expect(matchesFilter(r, { column: 'name', operator: 'not_regex', value: '^Al' } as never)).toBe(false);
+  expect(matchesFilter(r, { column: 'gone', operator: 'regex', value: '.*' } as never)).toBe(false);
+  expect(matchesFilter(r, { column: 'gone', operator: 'not_regex', value: '.*' } as never)).toBe(true);
+});

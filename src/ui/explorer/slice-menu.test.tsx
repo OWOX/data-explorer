@@ -96,7 +96,7 @@ test('the Funnel tooltip of a HAVING filter names the function', async () => {
   await waitFor(() => expect(headers().some((h) => h?.includes('Sum'))).toBe(true));
   const button = await within(data()).findByRole('button', { name: /^Filter Net Revenue/ });
   await userEvent.hover(button);
-  expect((await screen.findAllByText('Filter: sum > 100')).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText('Filter: sum greater than 100')).length).toBeGreaterThan(0);
 });
 
 test('the Slice row is active when its field has a slice, and not when it has none', async () => {

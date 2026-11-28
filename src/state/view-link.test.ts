@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeViewLink, encodeViewLink, MAX_AGG_RULES, MAX_DECODED_BYTES, MAX_LINK_CHARTS, MAX_ROUTE_LENGTH, type DecodedView } from './view-link';
+import { decodeRule, decodeViewLink, encodeViewLink, ruleTuple, MAX_AGG_RULES, MAX_DECODED_BYTES, MAX_LINK_CHARTS, MAX_ROUTE_LENGTH, type DecodedView } from './view-link';
 
 const folded = { sources: false, marts: true, data: false, row: true };
 const base: Omit<DecodedView, 'dropped' | 'droppedAggregations'> = {
@@ -381,14 +381,26 @@ describe('view link slices and HAVING filters', () => {
 });
 
 describe('list rules in a link', () => {
-  it('round trips the list marker on a filter (with and without a function slot) and a slice, and an unmarked comma value stays unmarked', async () => {
+  it('round trips in / not_in on a filter and a slice, and a comma eq stays an eq', async () => {
     const view = { ...base, grid: { ...base.grid!, filters: {
-      a: { field: 'a', op: 'eq' as const, value: 'x, y', list: true as const },
-      b: { field: 'b', op: 'neq' as const, value: 'x, y', list: true as const },
+      a: { field: 'a', op: 'in' as const, value: 'x, y' },
+      b: { field: 'b', op: 'not_in' as const, value: 'x, y' },
       c: { field: 'c', op: 'eq' as const, value: 'x, y' },
-    }, slices: { d: { field: 'd', op: 'eq' as const, value: 'x, y', list: true as const } } } };
+    }, slices: { d: { field: 'd', op: 'in' as const, value: 'x, y' } } } };
     const d = (await decodeViewLink(await encodeViewLink(view))) as DecodedView;
     expect(d.grid!.filters).toEqual(view.grid.filters);
     expect(d.grid!.slices).toEqual(view.grid.slices);
+  });
+  it('a new link never writes the old list flag', () => {
+    expect(ruleTuple('a', { field: 'a', op: 'in', value: 'x, y' }, true)).toEqual(['a', 'in', 'x, y']);
+  });
+  it('an old rule with the list flag decodes as in / not_in; without the flag eq / neq stay', () => {
+    const name = (c: unknown) => (typeof c === 'string' ? c : null);
+    expect(decodeRule(['a', 'eq', 'x, y', null, 1], true, name)).toEqual({ field: 'a', op: 'in', value: 'x, y' });
+    expect(decodeRule(['a', 'neq', 'x, y', null, 1], true, name)).toEqual({ field: 'a', op: 'not_in', value: 'x, y' });
+    expect(decodeRule(['a', 'eq', 'x, y', 1], false, name)).toEqual({ field: 'a', op: 'in', value: 'x, y' });
+    expect(decodeRule(['a', 'eq', 'x, y'], false, name)).toEqual({ field: 'a', op: 'eq', value: 'x, y' });
+    // Old list values were plain comma text: a quote in one was a literal character, so it is written back quoted.
+    expect(decodeRule(['a', 'eq', 'say "hi", b', null, 1], true, name)).toEqual({ field: 'a', op: 'in', value: '"say ""hi""", b' });
   });
 });

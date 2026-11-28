@@ -289,6 +289,14 @@ export function renderFilter(d: Dialect, col: string, field: Field, f: ColumnFil
       const v = text(t.value);
       return { bigquery: `ENDS_WITH(${col}, ${v})`, athena: `substr(${col}, -length(${v})) = ${v}`, snowflake: `ENDSWITH(${col}, ${v})`, redshift: `RIGHT(${col}, LEN(${v})) = ${v}`, databricks: `endswith(${col}, ${v})` }[d];
     }
+    case 'regex': {
+      const v = text(t.value);
+      return { bigquery: `REGEXP_CONTAINS(${col}, ${v})`, athena: `regexp_like(${col}, ${v})`, snowflake: `REGEXP_COUNT(${col}, ${v}) > 0`, redshift: `${col} ~ ${v}`, databricks: `${col} RLIKE ${v}` }[d];
+    }
+    case 'not_regex': {
+      const v = text(t.value);
+      return { bigquery: `(${col} IS NULL OR NOT REGEXP_CONTAINS(${col}, ${v}))`, athena: `(${col} IS NULL OR NOT regexp_like(${col}, ${v}))`, snowflake: `(${col} IS NULL OR REGEXP_COUNT(${col}, ${v}) = 0)`, redshift: `(${col} IS NULL OR ${col} !~ ${v})`, databricks: `(${col} IS NULL OR NOT (${col} RLIKE ${v}))` }[d];
+    }
     case 'is_blank':
     case 'is_not_blank': {
       const blank = t.operator === 'is_blank';

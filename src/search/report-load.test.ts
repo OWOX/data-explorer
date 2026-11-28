@@ -1,5 +1,5 @@
 import { buildReportPayload } from '../api/exports';
-import type { ColumnFilter } from '../filters/build';
+import { toTraverseFilter, type ColumnFilter } from '../filters/build';
 import type { Field, Schema } from '../model/types';
 import type { GridState } from '../state/store';
 import { PAGE_SIZE } from '../config';
@@ -65,24 +65,41 @@ describe('round trip with buildReportPayload', () => {
 });
 
 describe('fromTraverseFilter', () => {
-  test('in and not_in become a list eq / neq; a value with a comma is unsupported', () => {
-    expect(fromTraverseFilter({ column: 'name', operator: 'in', value: ['a', 'b'] }, name)).toEqual({ field: 'name', op: 'eq', value: 'a, b', list: true });
-    expect(fromTraverseFilter({ column: 'name', operator: 'not_in', value: ['a', 'b'] }, name)).toEqual({ field: 'name', op: 'neq', value: 'a, b', list: true });
-    expect(fromTraverseFilter({ column: 'name', operator: 'in', value: ['a,b', 'c'] }, name)).toBeNull();
+  test('in and not_in stay in / not_in; a text value with a comma or a quote is written in quotes', () => {
+    expect(fromTraverseFilter({ column: 'name', operator: 'in', value: ['a', 'b'] }, name)).toEqual({ field: 'name', op: 'in', value: 'a, b' });
+    expect(fromTraverseFilter({ column: 'name', operator: 'not_in', value: ['a', 'b'] }, name)).toEqual({ field: 'name', op: 'not_in', value: 'a, b' });
+    expect(fromTraverseFilter({ column: 'name', operator: 'in', value: ['Acme, Inc.', 'c'] }, name)).toEqual({ field: 'name', op: 'in', value: '"Acme, Inc.", c' });
+    expect(fromTraverseFilter({ column: 'name', operator: 'not_in', value: ['a"b', ' x'] }, name)).toEqual({ field: 'name', op: 'not_in', value: '"a""b", " x"' });
+    expect(toTraverseFilter(fromTraverseFilter({ column: 'name', operator: 'in', value: ['Acme, Inc.', 'c'] }, name)!, name)).toEqual({ column: 'name', operator: 'in', value: ['Acme, Inc.', 'c'] });
   });
-  test('returns null for regex, a type mismatch and a wrong value shape', () => {
-    expect(fromTraverseFilter({ column: 'name', operator: 'regex', value: 'a' }, name)).toBeNull();
+  test('a value of spaces, as the editor saves `" "`, loads back quoted; an empty value is refused', () => {
+    expect(fromTraverseFilter({ column: 'name', operator: 'in', value: ['a', ' '] }, name)).toEqual({ field: 'name', op: 'in', value: 'a, " "' });
+    expect(fromTraverseFilter({ column: 'name', operator: 'in', value: ['a', ''] }, name)).toBeNull();
+  });
+  test('in on a number and on a date reads back as a list; numbers must be numbers', () => {
+    expect(fromTraverseFilter({ column: 'amount', operator: 'in', value: [1, 2] }, amount)).toEqual({ field: 'amount', op: 'in', value: '1, 2' });
+    expect(fromTraverseFilter({ column: 'amount', operator: 'in', value: ['1'] }, amount)).toBeNull();
+    expect(fromTraverseFilter({ column: 'day', operator: 'not_in', value: ['2026-01-01', '2026-01-02'] }, day)).toEqual({ field: 'day', op: 'not_in', value: '2026-01-01, 2026-01-02' });
+  });
+  test('regex and not_regex map on text; a regex on a number is unsupported', () => {
+    expect(fromTraverseFilter({ column: 'name', operator: 'regex', value: '^a' }, name)).toEqual({ field: 'name', op: 'regex', value: '^a' });
+    expect(fromTraverseFilter({ column: 'name', operator: 'not_regex', value: 'a' }, name)).toEqual({ field: 'name', op: 'not_regex', value: 'a' });
+    expect(fromTraverseFilter({ column: 'amount', operator: 'regex', value: 'a' }, amount)).toBeNull();
+  });
+  test('returns null for a type mismatch and a wrong value shape', () => {
     expect(fromTraverseFilter({ column: 'amount', operator: 'contains', value: 'a' }, amount)).toBeNull();
     expect(fromTraverseFilter({ column: 'amount', operator: 'gt', value: 'many' }, amount)).toBeNull();
     expect(fromTraverseFilter({ column: 'amount', operator: 'between', value: { from: 1 } }, amount)).toBeNull();
     expect(fromTraverseFilter({ column: 'name', operator: 'contains', value: '' }, name)).toBeNull();
-    expect(fromTraverseFilter({ column: 'stamp', operator: 'eq', value: '2026-01-01' }, stamp)).toBeNull();
     expect(fromTraverseFilter({ column: 'stamp', operator: 'relative_date', value: { kind: 'nope' } }, stamp)).toBeNull();
     expect(fromTraverseFilter('x', name)).toBeNull();
   });
 
   test('maps eq, lt, gt and relative_date on date fields', () => {
     expect(fromTraverseFilter({ column: 'day', operator: 'eq', value: '2026-01-02' }, day)).toEqual({ field: 'day', op: 'on', value: '2026-01-02' });
+    // An exact moment on a datetime has no form here; a whole day comes back as a between.
+    expect(fromTraverseFilter({ column: 'stamp', operator: 'eq', value: '2026-01-02 10:00:00' }, stamp)).toBeNull();
+    expect(fromTraverseFilter({ column: 'stamp', operator: 'between', value: { from: '2026-01-02 00:00:00', to: '2026-01-02 23:59:59' } }, stamp)).toEqual({ field: 'stamp', op: 'between', value: { from: '2026-01-02', to: '2026-01-02' } });
     expect(fromTraverseFilter({ column: 'stamp', operator: 'gt', value: '2026-01-02 10:00:00' }, stamp)).toEqual({ field: 'stamp', op: 'after', value: '2026-01-02 10:00:00' });
     expect(fromTraverseFilter({ column: 'amount', operator: 'eq', value: 3 }, amount)).toEqual({ field: 'amount', op: 'eq', value: 3 });
     expect(fromTraverseFilter({ column: 'name', operator: 'eq', value: 3 }, name)).toEqual({ field: 'name', op: 'eq', value: '3' });
@@ -213,7 +230,7 @@ describe('reportToGrid', () => {
   });
 
   test('a filter that cannot be read or sits on a missing field counts', () => {
-    const r = reportToGrid(rep({ filterConfig: [{ column: 'name', operator: 'regex', value: 'a' }, { column: 'gone', operator: 'is_blank' }] }), schema, schema);
+    const r = reportToGrid(rep({ filterConfig: [{ column: 'amount', operator: 'regex', value: 'a' }, { column: 'gone', operator: 'is_blank' }] }), schema, schema);
     expect(r.skipped.filters).toBe(2);
   });
 
