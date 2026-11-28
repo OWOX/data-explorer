@@ -1,17 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import type { Field } from '../model/types';
 import { toTraverseFilter } from './build';
-import { addValue, canSuggest, keepsPicks, lastToken, mergeValues, narrow, valuesOf, valuesQuery } from './valueSuggest';
+import { addValue, closePick, canSuggest, keepsPicks, lastToken, mergeValues, narrow, valuesOf, valuesQuery } from './valueSuggest';
 
 const f = (over: Partial<Field> = {}): Field => ({ name: 'country', alias: 'Country', type: 'STRING', category: 'string', description: null, isPrimaryKey: false, ...over });
-
-describe('addValue', () => {
-  test('adds to the empty input', () => expect(addValue('', 'US')).toBe('US, '));
-  test('adds after what is there, separated by a comma', () => expect(addValue('US, ', 'DE')).toBe('US, DE, '));
-  test('adds after a value typed without a trailing comma', () => expect(addValue('US,', 'DE')).toBe('US, DE, '));
-  test('a pick completes the half-typed piece', () => expect(addValue('US, d', 'DE')).toBe('US, DE, '));
-  test('skips a value already present, in any case', () => { expect(addValue('US, DE, ', 'de')).toBe('US, DE, '); expect(addValue('US', 'DE')).toBe('DE, '); });
-});
 
 describe('narrow', () => {
   const all = ['United States', 'Germany', 'Ukraine', 'France'];
@@ -40,15 +32,35 @@ describe('valuesQuery', () => {
 });
 
 describe('a comma-separated value', () => {
-  test('equals with several values is an `in` rule, does not equal is `not_in`', () => {
-    expect(toTraverseFilter({ field: 'country', op: 'eq', value: 'US, DE, ', list: true }, f())).toEqual({ column: 'country', operator: 'in', value: ['US', 'DE'] });
-    expect(toTraverseFilter({ field: 'country', op: 'neq', value: 'US,DE', list: true }, f())).toEqual({ column: 'country', operator: 'not_in', value: ['US', 'DE'] });
+  test('is any of with several values is an `in` rule, is none of is `not_in`', () => {
+    expect(toTraverseFilter({ field: 'country', op: 'in', value: 'US, DE, ' }, f())).toEqual({ column: 'country', operator: 'in', value: ['US', 'DE'] });
+    expect(toTraverseFilter({ field: 'country', op: 'not_in', value: 'US,DE' }, f())).toEqual({ column: 'country', operator: 'not_in', value: ['US', 'DE'] });
   });
-  test('one value with a trailing comma stays an equals', () => expect(toTraverseFilter({ field: 'country', op: 'eq', value: 'US, ', list: true }, f())).toEqual({ column: 'country', operator: 'eq', value: 'US' }));
-  test('without the list marker a comma value stays one exact value', () => expect(toTraverseFilter({ field: 'country', op: 'eq', value: 'US, DE' }, f())).toEqual({ column: 'country', operator: 'eq', value: 'US, DE' }));
+  test('one value is still an `in` with one entry', () => expect(toTraverseFilter({ field: 'country', op: 'in', value: 'US' }, f())).toEqual({ column: 'country', operator: 'in', value: ['US'] }));
+  test('equals keeps a comma value as one exact value', () => expect(toTraverseFilter({ field: 'country', op: 'eq', value: 'US, DE' }, f())).toEqual({ column: 'country', operator: 'eq', value: 'US, DE' }));
   test('a plain value is untouched; contains keeps its commas', () => {
     expect(toTraverseFilter({ field: 'country', op: 'eq', value: ' US ' }, f())).toEqual({ column: 'country', operator: 'eq', value: ' US ' });
     expect(toTraverseFilter({ field: 'country', op: 'contains', value: 'a, b' }, f())).toEqual({ column: 'country', operator: 'contains', value: 'a, b' });
+  });
+});
+
+describe('addValue / closePick', () => {
+  test('the first pick is the bare value, the second adds ", " between', () => {
+    expect(addValue('', 'A')).toBe('A');
+    expect(addValue(closePick('A', ['A', 'B']), 'B')).toBe('A, B');
+    expect(addValue(closePick('A, B', ['A', 'B', 'C']), 'C')).toBe('A, B, C');
+  });
+  test('a value already there leaves the values as they were, minus a half-typed piece', () => {
+    expect(addValue('A, B, ', 'a')).toBe('A, B');
+    expect(addValue('A, ', 'A')).toBe('A');
+  });
+  test('the half-typed piece is what the pick completes', () => expect(addValue('A, Ge', 'Germany')).toBe('A, Germany'));
+  test('a piece that is exactly a known value is closed with ", "; others stay', () => {
+    expect(closePick('A', ['A', 'B'])).toBe('A, ');
+    expect(closePick('A, B', ['A', 'B', 'C'])).toBe('A, B, ');
+    expect(closePick('A, b', ['A', 'B'])).toBe('A, b');
+    expect(closePick('A, ', ['A'])).toBe('A, ');
+    expect(closePick('', ['A'])).toBe('');
   });
 });
 

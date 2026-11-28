@@ -36,6 +36,11 @@ export function matchesFilter(row: Row, f: TraverseFilter, now = new Date()): bo
     case 'not_contains': return !s.toLowerCase().includes(String(f.value).toLowerCase());
     case 'starts_with': return s.startsWith(String(f.value));
     case 'ends_with': return s.endsWith(String(f.value));
+    case 'regex': case 'not_regex': {
+      let hit = false;
+      try { hit = new RegExp(String(f.value)).test(s); } catch { /* an invalid pattern matches nothing */ }
+      return f.operator === 'regex' ? hit : !hit;
+    }
     case 'gt': return v != null && cmp(v, f.value) > 0;
     case 'gte': return v != null && cmp(v, f.value) >= 0;
     case 'lt': return v != null && cmp(v, f.value) < 0;

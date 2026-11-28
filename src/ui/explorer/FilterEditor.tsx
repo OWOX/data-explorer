@@ -1,17 +1,18 @@
 import { Check, Trash2 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
-import { DATE_PRESETS, LIST_LABELS, RELATIVE_MAX_N, RELATIVE_PRESETS, RELATIVE_UNITS, fromRule, isDateTimeField, isPreset, operatorsFor, toRule, type OpId, type RelativeUnit } from '../../filters/catalogue';
+import { DATE_PRESETS, RELATIVE_MAX_N, RELATIVE_PRESETS, RELATIVE_UNITS, fromRule, isDateTimeField, isPreset, operatorsFor, toRule, type OpId, type RelativeUnit } from '../../filters/catalogue';
 import { canSuggest, keepsPicks, tokensOf } from '../../filters/valueSuggest';
 import { isComplete, type ColumnFilter, type FilterValue } from '../../filters/build';
 import { columnTitle } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
-import { isDayType } from '../../model/field-category';
 import type { RelativeDatePreset } from '../../sdk/types';
 import { ActionForm } from '../ActionForm';
 import { Select } from '../Select';
 import { ValueInput, type ValueSource } from './ValueInput';
 import { Panel, Row, panelBeingEdited, useSubmenu } from './MenuParts';
 
+/** Under these operators the second suggestion picked turns the text into the list form. */
+const TO_LIST: Record<string, OpId> = { contains: 'in', not_contains: 'not_in' };
 const input = 'dm-input h-8 w-full rounded-md border bg-background px-2 text-sm';
 
 type EditorProps = { field: Field; value: ColumnFilter | undefined; onApply: (f: ColumnFilter) => void; onClear: () => void;
@@ -57,7 +58,6 @@ function DateFilterEditor({ field, value, onApply, onClear, note, removeLabel = 
   const apply = (rule: RelativeDatePreset) => onApply({ field: field.name, op: 'relative', value: rule });
   const rule = toRule(n, unit);
   const nOk = Number.isInteger(n) && n > 0 && rule.n <= RELATIVE_MAX_N;
-  const isDay = isDayType(field.type);
   const plain = { tabbable: true, onHover: hoverOther, onLeaveRow: leave } as const;
   // Rows in the flyout itself must not close it when the pointer rests on them.
   const preset = (label: string, inFly = false) => {
@@ -77,7 +77,7 @@ function DateFilterEditor({ field, value, onApply, onClear, note, removeLabel = 
       {group('this')}
       <Row {...plain} slot label="Custom range…" onActivate={() => goForm('between')} />
       {dash}
-      {isDay && <Row {...plain} slot label="On…" onActivate={() => goForm('on')} />}
+      <Row {...plain} slot label="On…" onActivate={() => goForm('on')} />
       {REST.map((r) => <Row key={r.op} {...plain} slot label={r.label} onActivate={() => goForm(r.op)} />)}
       {(['is_blank', 'is_not_blank'] as const).map((op) => (
         <Row key={op} {...plain} check checked={value?.op === op} label={op === 'is_blank' ? 'Is blank' : 'Is not blank'} onActivate={() => onApply({ field: field.name, op })} />
@@ -111,26 +111,20 @@ function OperatorForm({ field, value, onApply, onClear, note, values, startOp }:
   const [op, setOp] = useState<OpId>(startOp ?? (value && ops.some((o) => o.id === value.op) ? value.op : ops[0]!.id));
   const [val, setVal] = useState<FilterValue>(value?.op === op ? value.value : undefined);
   const def = ops.find((o) => o.id === op)!;
-  // A comma in a text eq/neq typed here makes a list (any of); the rule says so, so only editor values are read that way.
-  // A reopened rule stays as it was until the text is edited.
-  const [edited, setEdited] = useState(false);
   // Under contains / does not contain the text was built by suggestion picks (a trailing ", " is the separator, not part of the value).
   // `undefined` means no pick yet: a reopened single value seeds pick mode only when it is one of the column's loaded suggestions,
   // otherwise it is plain contains text (a fragment such as "Ukr" must not become the first token of a list).
   const [base, setBase] = useState<string | null | undefined>(undefined);
   const [, setLoadedTick] = useState(0);
   const loadedValues = values && canSuggest(field) ? values.cache.get(values.key) : undefined;
-  const seed = value?.op === op && (op === 'contains' || op === 'not_contains') && typeof value.value === 'string' && !value.value.includes(',') && !value.list ? value.value : null;
+  const seed = value?.op === op && (op === 'contains' || op === 'not_contains') && typeof value.value === 'string' && !value.value.includes(',') ? value.value : null;
   const eb = base !== undefined ? base : seed !== null && (loadedValues?.includes(seed) || values?.loaded?.includes(seed)) ? seed : null;
   const inPick = eb !== null && typeof val === 'string' && keepsPicks(eb, val);
-  const wasList = !!value?.list && value.op === op;
-  const isList = field.category === 'string' && (op === 'eq' || op === 'neq') && typeof val === 'string' && (edited ? val.includes(',') : wasList);
-  // In pick mode the text is a list of picks: two or more values send as the list form, as the second pick would have switched it.
-  const picked = inPick && (op === 'contains' || op === 'not_contains') && typeof val === 'string' ? tokensOf(val) : null;
-  const toList = !!picked && picked.length >= 2;
-  const sendOp: OpId = toList ? (op === 'contains' ? 'eq' : 'neq') : op;
-  const sent = picked ? picked.join(', ') : val;
-  const draft: ColumnFilter = { field: field.name, op: sendOp, ...(def.value === 'none' ? {} : { value: sent }), ...(isList || toList ? { list: true as const } : {}) };
+  // A second value in a contains text built by picks (or typed after them) makes it the list form: the operator becomes is any of / is none of.
+  if (inPick && op in TO_LIST && typeof val === 'string' && tokensOf(val).length >= 2) { setOp(TO_LIST[op]!); setBase(null); }
+  // Under contains the text built by picks has no separator left over: "Ukraine," is the one value "Ukraine".
+  const sent = inPick && op in TO_LIST && typeof val === 'string' ? tokensOf(val).join(', ') : val;
+  const draft: ColumnFilter = { field: field.name, op, ...(def.value === 'none' ? {} : { value: sent }) };
   const range = (val ?? { from: '', to: '' }) as { from: string; to: string };
   const rel = (val ?? { kind: 'today' }) as RelativeDatePreset;
   const dateType = field.category === 'time' ? 'time' : isDateTimeField(field) ? 'datetime-local' : 'date';
@@ -138,10 +132,13 @@ function OperatorForm({ field, value, onApply, onClear, note, values, startOp }:
   return (
     <ActionForm className="dm-filter-form flex flex-col gap-2" onAction={() => { if (isComplete(draft, field)) onApply(draft); }}>
       <Select aria-label="Operator" value={op} onChange={(e) => { setOp(e.target.value as OpId); setVal(undefined); setBase(null); }}>
-        {ops.map((o) => <option key={o.id} value={o.id}>{o.id === op && toList ? LIST_LABELS[sendOp as 'eq' | 'neq'] : isList && o.id === op && (o.id === 'eq' || o.id === 'neq') ? LIST_LABELS[o.id] : o.label}</option>)}
+        {ops.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
       </Select>
-      {def.value === 'text' && <ValueInput op={op} value={String(val ?? '')} onChange={(v, b) => { setEdited(true); setVal(v); // Typing before the suggestions load leaves the base unseeded, so a reopened value is seeded once they arrive.
-            setBase(b ?? (eb !== null && keepsPicks(eb, v) ? eb : base === undefined && seed !== null && !loadedValues ? undefined : null)); }} inPick={inPick} onLoad={() => setLoadedTick((t) => t + 1)} onOp={(o) => { setOp(o as OpId); setBase(null); }} source={canSuggest(field) ? values : undefined} className={input} />}
+      {(def.value === 'text' || (def.value === 'list' && field.category === 'string')) && <ValueInput op={op} value={String(val ?? '')} onChange={(v, b) => { setVal(v);
+            // Typing before the suggestions load leaves the base unseeded, so a reopened value is seeded once they arrive.
+            setBase(b ?? (eb !== null && keepsPicks(eb, v) ? eb : base === undefined && seed !== null && !loadedValues ? undefined : null)); }}
+            inPick={inPick} onLoad={() => setLoadedTick((t) => t + 1)} source={canSuggest(field) && op !== 'regex' && op !== 'not_regex' ? values : undefined} className={input} />}
+      {def.value === 'list' && field.category !== 'string' && <input aria-label="Value" className={input} type="text" placeholder="comma-separated" autoComplete="off" value={String(val ?? '')} onChange={(e) => setVal(e.target.value)} />}
       {def.value === 'number' && (
         <input aria-label="Value" className={input} type="number" value={String(val ?? '')} onChange={(e) => setVal(e.target.value)} />
       )}

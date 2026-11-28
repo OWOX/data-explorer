@@ -1,6 +1,6 @@
 import { RotateCw } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
-import { LIST_OPS, addValue, mergeValues, narrow, tokensOf } from '../../filters/valueSuggest';
+import { LIST_OPS, addValue, closePick, lastToken, mergeValues, narrow } from '../../filters/valueSuggest';
 import { Panel } from './MenuParts';
 
 /**
@@ -9,14 +9,12 @@ import { Panel } from './MenuParts';
  */
 export type ValueSource = { key: string; load?: (signal: AbortSignal, fresh: boolean) => Promise<string[]>; loaded?: string[]; cache: Map<string, string[]> };
 
-/** Under these text operators a pick adds to the text; the second pick switches the operator to the list form. */
-const SWITCH: Record<string, string> = { contains: 'eq', not_contains: 'neq' };
+/** Under these text operators a pick builds a list in the text; the form switches to the list form once there are two. */
+const PICKS: ReadonlySet<string> = new Set(['contains', 'not_contains']);
 
 type Props = { op: string; value: string; onChange: (v: string, base?: string) => void; source?: ValueSource; className: string;
   /** The text is still what the picks built (or a reopened single value), so "contains" reads as a list; a hand-typed comma is a literal one. */
   inPick?: boolean;
-  /** Asks the form to change the operator (to the list form after the second pick). */
-  onOp?: (op: string) => void;
   /** Called once the column's values are in the cache. */
   onLoad?: () => void };
 
@@ -24,7 +22,7 @@ type Props = { op: string; value: string; onChange: (v: string, base?: string) =
  * A text input with the column's known values under it. The values load on first focus; typing narrows them by the text after the last comma;
  * a pick adds the value to the comma-separated list (for the list operators) and the input keeps its focus. A failed read shows nothing.
  */
-export function ValueInput({ op, value, onChange, source, className, inPick = false, onOp, onLoad }: Props) {
+export function ValueInput({ op, value, onChange, source, className, inPick = false, onLoad }: Props) {
   const [anchor, setAnchor] = useState<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
   // Whether the input was ever focused: the in-flow no-match note then stays after a blur, so pressing Apply does not shift it away between mouse down and up.
@@ -56,22 +54,21 @@ export function ValueInput({ op, value, onChange, source, className, inPick = fa
   const reload = () => { if (key === undefined) return; source?.cache.delete(key); read(true); setHot(-1); setKeyed(false); };
 
   // Pick mode lasts while the picked text is still there; typing after it narrows by the text after the last comma.
-  const list = LIST_OPS.has(op) || (op in SWITCH && inPick);
-  // A reopened single value counts as one token: the next pick follows it.
-  const text = inPick && !value.includes(',') ? `${value}, ` : value;
+  const list = LIST_OPS.has(op) || (PICKS.has(op) && inPick);
   // A value with a comma would read as two in a list, so it is not offered there.
   const pool = mergeValues(source?.loaded ?? [], loaded ?? []);
+  const known = pool.filter((o) => !o.includes(','));
+  // A piece after the last comma that is exactly a known value is a finished pick (a reopened single value too): the next pick follows it.
+  const text = list ? closePick(value, known) : value;
   const options = list
-    ? narrow(pool.filter((o) => !o.includes(',')), text)
+    ? narrow(known, text)
     : pool.filter((o) => o !== value && o.toLowerCase().includes(value.trim().toLowerCase()));
-  // In a list, the one suggestion left is the word already typed (exactly: "Paid" against "paid" still offers the fix): nothing to add, so the panel does not hang over the editor's buttons.
-  const exact = list && options.length === 1 && options[0] === text.slice(text.lastIndexOf(',') + 1).trim();
   // A value that is already the text (a pick) or, in a list, every value picked, leaves nothing to suggest: the panel closes instead of saying "No matching values" over the Apply button.
   const settled = !options.length && (list
-    ? text.slice(text.lastIndexOf(',') + 1).trim() === '' && pool.some((o) => !o.includes(','))
+    ? lastToken(text) === '' && known.length > 0
     : pool.includes(value));
   // Once the values are in, the panel stays up with no match too, so the reload row can still be reached.
-  const shown = open && !!source && (loading || (options.length > 0 && !exact) || (!!loaded && !settled));
+  const shown = open && !!source && (loading || options.length > 0 || (!!loaded && !settled));
   // The listbox is in the DOM once the values are in; while they load there is only a status note.
   const listed = shown && !(loading && !loaded && !options.length);
   // The reload row (only values from the server can be out of date) comes after the last option in the arrow-key order.
@@ -80,11 +77,10 @@ export function ValueInput({ op, value, onChange, source, className, inPick = fa
   const onReload = !!loaded && at === options.length;
   const pick = (v: string) => {
     // A value with a comma cannot join a list: it replaces the text.
-    if (op in SWITCH && !v.includes(',')) {
+    if (PICKS.has(op) && !v.includes(',')) {
       const next = addValue(inPick ? text : '', v);
       onChange(next, next);
-      if (tokensOf(next).length >= 2) onOp?.(SWITCH[op]!);
-    } else onChange(list && !(op in SWITCH) ? addValue(text, v) : v);
+    } else onChange(LIST_OPS.has(op) ? addValue(text, v) : v);
     setHot(-1);
     setKeyed(false);
   };
@@ -128,7 +124,7 @@ export function ValueInput({ op, value, onChange, source, className, inPick = fa
             )}
         </div>
       )}
-      {shown && anchor && options.length > 0 && !exact && (
+      {shown && anchor && options.length > 0 && (
         <Panel anchor={anchor} mode="below" onEscape={() => setOpen(false)} focusSeq={0} matchWidth className="dm-suggest">
           {/* Pressing an option must not take focus from the input: several can be picked in a row. */}
           <div id={id} role="listbox" aria-label="Suggested values" onMouseDown={(e) => e.preventDefault()}>

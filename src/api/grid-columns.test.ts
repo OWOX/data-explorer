@@ -183,7 +183,7 @@ test('a bucket with a time zone the backend would refuse, or on a column that al
 
 describe('the saved grid view', () => {
   const view = {
-    filters: { name: { field: 'name', op: 'eq' as const, value: 'a, b', list: true as const }, amount: { field: 'amount', op: 'gt' as const, value: 5, fn: 'SUM' as const } },
+    filters: { name: { field: 'name', op: 'in' as const, value: 'a, b' }, amount: { field: 'amount', op: 'gt' as const, value: 5, fn: 'SUM' as const } },
     slices: { customers__city: { field: 'customers__city', op: 'contains' as const, value: 'x' } },
     sorts: [{ field: 'amount', direction: 'desc' as const }],
     limit: 400,

@@ -4,42 +4,57 @@ import { zonesBuckets } from '../model/aggregation';
 import { tokensOf } from './valueSuggest';
 import type { RelativeDatePreset } from '../sdk/types';
 
-const OP_IDS = ['contains', 'not_contains', 'eq', 'neq', 'starts_with', 'ends_with', 'gt', 'gte', 'lt', 'lte', 'between', 'on', 'before', 'after', 'relative', 'is_true', 'is_false', 'is_blank', 'is_not_blank'] as const;
+const OP_IDS = ['contains', 'not_contains', 'eq', 'neq', 'in', 'not_in', 'starts_with', 'ends_with', 'regex', 'not_regex', 'gt', 'gte', 'lt', 'lte', 'between', 'on', 'before', 'after', 'relative', 'is_true', 'is_false', 'is_blank', 'is_not_blank'] as const;
 export type OpId = (typeof OP_IDS)[number];
 export const isOpId = (v: unknown): v is OpId => (OP_IDS as readonly unknown[]).includes(v);
-type ValueKind = 'none' | 'text' | 'number' | 'date' | 'number-range' | 'date-range' | 'relative';
+// 'list' is a comma-separated text: is any of / is none of.
+type ValueKind = 'none' | 'text' | 'number' | 'date' | 'list' | 'number-range' | 'date-range' | 'relative';
 type OpDef = { id: OpId; label: string; value: ValueKind };
 
+// Labels and order follow the OWOX extension's output controls (output-controls-operators.ts).
 const blank: OpDef[] = [
   { id: 'is_blank', label: 'is blank', value: 'none' },
   { id: 'is_not_blank', label: 'is not blank', value: 'none' },
 ];
+const lists = (v: ValueKind): OpDef[] => [
+  { id: 'in', label: 'is any of', value: v },
+  { id: 'not_in', label: 'is none of', value: v },
+];
 
 const STRING: OpDef[] = [
+  { id: 'eq', label: 'is', value: 'text' },
+  { id: 'neq', label: 'is not', value: 'text' },
+  ...lists('list'),
   { id: 'contains', label: 'contains', value: 'text' },
-  { id: 'not_contains', label: 'does not contain', value: 'text' },
-  { id: 'eq', label: 'equals', value: 'text' },
-  { id: 'neq', label: 'does not equal', value: 'text' },
+  { id: 'not_contains', label: "doesn't contain", value: 'text' },
   { id: 'starts_with', label: 'starts with', value: 'text' },
   { id: 'ends_with', label: 'ends with', value: 'text' },
   ...blank,
+  { id: 'regex', label: 'matches regex', value: 'text' },
+  { id: 'not_regex', label: "doesn't match regex", value: 'text' },
 ];
 const NUMBER: OpDef[] = [
-  { id: 'eq', label: '=', value: 'number' },
-  { id: 'neq', label: '≠', value: 'number' },
-  { id: 'gt', label: '>', value: 'number' },
-  { id: 'gte', label: '≥', value: 'number' },
-  { id: 'lt', label: '<', value: 'number' },
-  { id: 'lte', label: '≤', value: 'number' },
+  { id: 'eq', label: 'equals', value: 'number' },
+  { id: 'neq', label: 'not equals', value: 'number' },
+  ...lists('list'),
+  { id: 'gt', label: 'greater than', value: 'number' },
+  { id: 'lt', label: 'less than', value: 'number' },
+  { id: 'gte', label: 'greater than or equal', value: 'number' },
+  { id: 'lte', label: 'less than or equal', value: 'number' },
   { id: 'between', label: 'between', value: 'number-range' },
   ...blank,
 ];
-const dateOps = (withOn: boolean, withRelative: boolean): OpDef[] => [
-  ...(withOn ? [{ id: 'on', label: 'on', value: 'date' } as OpDef] : []),
-  { id: 'before', label: 'before', value: 'date' },
+/** Dates and times share ids ('on' is eq; before / after are lt / gt); the words differ: on / at, on or after / at or after. */
+const dateOps = (time: boolean): OpDef[] => [
+  { id: 'on', label: time ? 'at' : 'on', value: 'date' },
+  { id: 'neq', label: time ? 'not at' : 'not on', value: 'date' },
+  ...lists('list'),
   { id: 'after', label: 'after', value: 'date' },
+  { id: 'before', label: 'before', value: 'date' },
+  { id: 'gte', label: time ? 'at or after' : 'on or after', value: 'date' },
+  { id: 'lte', label: time ? 'at or before' : 'on or before', value: 'date' },
   { id: 'between', label: 'between', value: 'date-range' },
-  ...(withRelative ? [{ id: 'relative', label: 'relative', value: 'relative' } as OpDef] : []),
+  ...(time ? [] : [{ id: 'relative', label: 'relative', value: 'relative' } as OpDef]),
   ...blank,
 ];
 
@@ -47,12 +62,12 @@ export function operatorsFor(field: Field): OpDef[] {
   switch (field.category) {
     case 'string': return STRING;
     case 'number': return NUMBER;
-    case 'date': return dateOps(isDayType(field.type), true);
-    case 'time': return dateOps(false, false);
+    case 'date': return dateOps(false);
+    case 'time': return dateOps(true);
     case 'boolean': return [
       { id: 'is_true', label: 'is true', value: 'none' },
       { id: 'is_false', label: 'is false', value: 'none' },
-      { id: 'is_blank', label: 'is blank', value: 'none' },
+      ...blank,
     ];
     default: return blank;
   }
@@ -148,15 +163,12 @@ export const isDateTimeField = (field: Field) => field.category === 'date' && !i
 /** A bound with a time part, as a zoned chart click sends it. */
 const ZONED_BOUND = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 
-/** What the list forms of text equals / does not equal are called (as in the OWOX output controls). */
-export const LIST_LABELS = { eq: 'is any of', neq: 'is none of' } as const;
-
-/** What an applied filter says, for the tooltip on the header's filter mark: "Last 30 days", "equals Berlin", "between 1 and 5". */
-export function describeFilter(field: Field, filter: { op: OpId; value?: unknown; list?: boolean }): string {
+/** What an applied filter says, for the tooltip on the header's filter mark: "Last 30 days", "is Berlin", "between 1 and 5", "is any of A, B". */
+export function describeFilter(field: Field, filter: { op: OpId; value?: unknown }): string {
   if (filter.op === 'relative') return filter.value && typeof filter.value === 'object' && 'kind' in filter.value ? presetName(filter.value as RelativeDatePreset) : 'relative';
-  if (filter.list && typeof filter.value === 'string' && (filter.op === 'eq' || filter.op === 'neq')) return `${LIST_LABELS[filter.op]} ${tokensOf(filter.value).join(', ')}`;
   const label = operatorsFor(field).find((o) => o.id === filter.op)?.label ?? filter.op;
   const v = filter.value;
+  if ((filter.op === 'in' || filter.op === 'not_in') && typeof v === 'string') return `${label} ${tokensOf(v).join(', ')}`;
   if (v === undefined || v === null || v === '') return label;
   if (typeof v === 'object' && 'from' in v) { const r = v as { from: unknown; to: unknown }; const text = `${label} ${String(r.from)} and ${String(r.to)}`; return zonesBuckets(field) && [r.from, r.to].every((x) => typeof x === 'string' && ZONED_BOUND.test(x)) ? `${text} (UTC)` : text; }
   return `${label} ${String(v)}`;

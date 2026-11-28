@@ -8,6 +8,7 @@ import type { RelativeDatePreset } from '../sdk/types';
 const WORDS: Record<string, string> = {
   contains: 'contains', not_contains: 'does not contain', eq: 'equals', neq: 'does not equal', starts_with: 'starts with', ends_with: 'ends with',
   gt: 'is greater than', gte: 'is at least', lt: 'is less than', lte: 'is at most',
+  in: 'is any of', not_in: 'is none of', regex: 'matches the regex', not_regex: 'does not match the regex',
   on: 'is on', before: 'is before', after: 'is after',
   is_true: 'is true', is_false: 'is false', is_blank: 'is blank', is_not_blank: 'is not blank',
 };
@@ -44,9 +45,9 @@ export function filterSentence(f: ColumnFilter): string {
     const name = lowerFirst(presetName(rule));
     return `${field} is in ${name.startsWith('last') ? 'the ' : ''}${name}`;
   }
-  if (f.list && (f.op === 'eq' || f.op === 'neq') && typeof f.value === 'string') {
+  if ((f.op === 'in' || f.op === 'not_in') && typeof f.value === 'string') {
     const values = f.value.split(',').map((v) => v.trim()).filter(Boolean).map(quoted).join(', ');
-    return `${field} is ${f.op === 'eq' ? 'any' : 'none'} of ${values}`;
+    return `${field} ${WORDS[f.op]} ${values}`;
   }
   const word = WORDS[f.op] ?? f.op;
   return f.value === undefined ? `${field} ${word}` : `${field} ${word} ${quoted(f.value)}`;

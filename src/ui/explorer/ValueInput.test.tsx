@@ -10,7 +10,7 @@ const country: Field = { name: 'country', alias: 'Country', type: 'STRING', cate
 const source = (load: ValueSource['load'], key = 'k'): ValueSource => ({ key, load, cache: new Map() });
 const loadOf = (values: string[]) => vi.fn(() => Promise.resolve(values));
 
-function Harness({ op = 'eq', src, start = '' }: { op?: string; src: ValueSource; start?: string }) {
+function Harness({ op = 'in', src, start = '' }: { op?: string; src: ValueSource; start?: string }) {
   const [v, setV] = useState(start);
   return <ValueInput op={op} value={v} onChange={setV} source={src} className="" />;
 }
@@ -52,10 +52,10 @@ test('clicking picks: the value is added with a comma, the input keeps focus, an
   render(<Harness src={source(loadOf(['US', 'DE', 'FR']))} />);
   await userEvent.click(input());
   await userEvent.click(await screen.findByRole('option', { name: 'DE' }));
-  expect(input().value).toBe('DE, ');
+  expect(input().value).toBe('DE');
   expect(input()).toHaveFocus();
   await userEvent.click(await screen.findByRole('option', { name: 'US' }));
-  expect(input().value).toBe('DE, US, ');
+  expect(input().value).toBe('DE, US');
   expect(input()).toHaveFocus();
   expect(options()).toEqual(['FR']);
 });
@@ -64,7 +64,7 @@ test('what is typed stays: a pick adds after it', async () => {
   render(<Harness src={source(loadOf(['US', 'DE']))} start="FR, " />);
   await userEvent.click(input());
   await userEvent.click(await screen.findByRole('option', { name: 'US' }));
-  expect(input().value).toBe('FR, US, ');
+  expect(input().value).toBe('FR, US');
 });
 
 test('typing narrows by the text after the last comma, ignoring case', async () => {
@@ -83,9 +83,9 @@ test('arrow keys move, Enter picks, Escape closes the list without closing anyth
   await userEvent.click(input());
   await screen.findAllByRole('option');
   await userEvent.keyboard('{ArrowDown}{ArrowDown}{Enter}');
-  expect(input().value).toBe('DE, ');
+  expect(input().value).toBe('DE');
   await userEvent.keyboard('{ArrowUp}{Enter}');
-  expect(input().value).toBe('DE, FR, ');
+  expect(input().value).toBe('DE, FR');
   await userEvent.keyboard('{Escape}');
   expect(screen.queryByRole('listbox')).toBeNull();
   expect(outer).not.toHaveBeenCalled();
@@ -114,7 +114,7 @@ test('under contains a pick keeps the list and focus, and one pick stays contain
   await userEvent.selectOptions(op(), 'contains');
   await userEvent.type(input(), 'un');
   await userEvent.click(await screen.findByRole('option', { name: 'United States' }));
-  expect(input().value).toBe('United States, ');
+  expect(input().value).toBe('United States');
   expect(input()).toHaveFocus();
   expect(op().value).toBe('contains');
   expect(within(screen.getByRole('listbox')).getAllByRole('option').map((o) => o.textContent)).toEqual(['Ukraine', 'Germany']);
@@ -128,12 +128,12 @@ test('under contains the second pick switches to is any of', async () => {
   await userEvent.click(input());
   await userEvent.click(await screen.findByRole('option', { name: 'Ukraine' }));
   await userEvent.click(await screen.findByRole('option', { name: 'Germany' }));
-  expect(input().value).toBe('Ukraine, Germany, ');
+  expect(input().value).toBe('Ukraine, Germany');
   expect(input()).toHaveFocus();
-  expect(op().value).toBe('eq');
+  expect(op().value).toBe('in');
   expect(op().selectedOptions[0]!.textContent).toBe('is any of');
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'eq', value: 'Ukraine, Germany, ', list: true });
+  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'in', value: 'Ukraine, Germany' });
 });
 
 test('under does not contain the second pick switches to is none of', async () => {
@@ -143,7 +143,7 @@ test('under does not contain the second pick switches to is none of', async () =
   await userEvent.click(await screen.findByRole('option', { name: 'Ukraine' }));
   expect(op().value).toBe('not_contains');
   await userEvent.click(await screen.findByRole('option', { name: 'Germany' }));
-  expect(op().value).toBe('neq');
+  expect(op().value).toBe('not_in');
   expect(op().selectedOptions[0]!.textContent).toBe('is none of');
 });
 
@@ -152,19 +152,19 @@ test('under contains a pick, some typing and another pick still make a list', as
   await userEvent.selectOptions(op(), 'contains');
   await userEvent.click(input());
   await userEvent.click(await screen.findByRole('option', { name: 'Ukraine' }));
-  await userEvent.type(input(), 'Ger');
+  await userEvent.type(input(), ', Ger');
   expect(within(screen.getByRole('listbox')).getAllByRole('option').map((o) => o.textContent)).toEqual(['Germany']);
   await userEvent.click(await screen.findByRole('option', { name: 'Germany' }));
-  expect(input().value).toBe('Ukraine, Germany, ');
-  expect(op().value).toBe('eq');
+  expect(input().value).toBe('Ukraine, Germany');
+  expect(op().value).toBe('in');
 });
 
 test('a reopened contains filter: a pick adds to the saved value', async () => {
   render(<FilterEditor field={country} value={{ field: 'country', op: 'contains', value: 'Ukraine' }} onApply={vi.fn()} onClear={vi.fn()} values={source(loadOf(['United States', 'Ukraine', 'Germany']))} />);
   await userEvent.click(input());
   await userEvent.click(await screen.findByRole('option', { name: 'Germany' }));
-  expect(input().value).toBe('Ukraine, Germany, ');
-  expect(op().value).toBe('eq');
+  expect(input().value).toBe('Ukraine, Germany');
+  expect(op().value).toBe('in');
 });
 
 test('a reopened contains filter: typing a second value after the saved one keeps the suggestions', async () => {
@@ -172,8 +172,8 @@ test('a reopened contains filter: typing a second value after the saved one keep
   await userEvent.click(input());
   await userEvent.type(input(), ', Ger');
   await userEvent.click(await screen.findByRole('option', { name: 'Germany' }));
-  expect(op().value).toBe('eq');
-  expect(input().value).toBe('Ukraine, Germany, ');
+  expect(op().value).toBe('in');
+  expect(input().value).toBe('Ukraine, Germany');
 });
 
 const reopened = (v: string, onApply = vi.fn(), opId: 'contains' | 'not_contains' = 'contains', src = source(loadOf(['United States', 'Ukraine', 'Germany']))) => {
@@ -186,7 +186,7 @@ test('a reopened contains fragment that is not a suggestion stays plain contains
   await userEvent.click(input());
   await userEvent.click(await screen.findByRole('option', { name: 'Ukraine' }));
   expect(op().value).toBe('contains');
-  expect(input().value).toBe('Ukraine, ');
+  expect(input().value).toBe('Ukraine');
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
   expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'contains', value: 'Ukraine' });
 });
@@ -196,9 +196,9 @@ test('a reopened contains value that is a suggestion: typing a second value and 
   await userEvent.click(input());
   await userEvent.type(input(), ', Ger');
   await userEvent.click(await screen.findByRole('option', { name: 'Germany' }));
-  expect(op().value).toBe('eq');
+  expect(op().value).toBe('in');
   expect(op().selectedOptions[0]!.textContent).toBe('is any of');
-  expect(input().value).toBe('Ukraine, Germany, ');
+  expect(input().value).toBe('Ukraine, Germany');
 });
 
 test('a pick plus a typed second value: Apply sends the list form', async () => {
@@ -206,9 +206,9 @@ test('a pick plus a typed second value: Apply sends the list form', async () => 
   await userEvent.selectOptions(op(), 'contains');
   await userEvent.click(input());
   await userEvent.click(await screen.findByRole('option', { name: 'Ukraine' }));
-  await userEvent.type(input(), 'Germany');
+  await userEvent.type(input(), ', Germany');
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'eq', value: 'Ukraine, Germany', list: true });
+  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'in', value: 'Ukraine, Germany' });
 });
 
 test('a pick plus a typed second value: Enter sends the list form', async () => {
@@ -216,9 +216,9 @@ test('a pick plus a typed second value: Enter sends the list form', async () => 
   await userEvent.selectOptions(op(), 'contains');
   await userEvent.click(input());
   await userEvent.click(await screen.findByRole('option', { name: 'Ukraine' }));
-  await userEvent.type(input(), 'Germany');
+  await userEvent.type(input(), ', Germany');
   await userEvent.keyboard('{Escape}{Enter}');
-  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'eq', value: 'Ukraine, Germany', list: true });
+  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'in', value: 'Ukraine, Germany' });
 });
 
 test('under does not contain a typed second value sends is none of', async () => {
@@ -226,9 +226,9 @@ test('under does not contain a typed second value sends is none of', async () =>
   await userEvent.selectOptions(op(), 'not_contains');
   await userEvent.click(input());
   await userEvent.click(await screen.findByRole('option', { name: 'Ukraine' }));
-  await userEvent.type(input(), 'Germany');
+  await userEvent.type(input(), ', Germany');
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'neq', value: 'Ukraine, Germany', list: true });
+  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'not_in', value: 'Ukraine, Germany' });
 });
 
 test('a reopened suggestion plus a typed second value sends the list form', async () => {
@@ -237,7 +237,7 @@ test('a reopened suggestion plus a typed second value sends the list form', asyn
   await screen.findAllByRole('option');
   await userEvent.type(input(), ', Germany');
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'eq', value: 'Ukraine, Germany', list: true });
+  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'in', value: 'Ukraine, Germany' });
 });
 
 test('typing before the suggestions load still seeds pick mode once they arrive', async () => {
@@ -248,7 +248,7 @@ test('typing before the suggestions load still seeds pick mode once they arrive'
   done(['United States', 'Ukraine', 'Germany']);
   await waitFor(() => expect(op().selectedOptions[0]!.textContent).toBe('is any of'));
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'eq', value: 'Ukraine, Germany', list: true });
+  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'in', value: 'Ukraine, Germany' });
 });
 
 test('the operator shows what Apply will send: "is any of" for two values, "contains" for one', async () => {
@@ -257,22 +257,22 @@ test('the operator shows what Apply will send: "is any of" for two values, "cont
   await userEvent.click(input());
   await userEvent.click(await screen.findByRole('option', { name: 'Ukraine' }));
   expect(op().selectedOptions[0]!.textContent).toBe('contains');
-  await userEvent.type(input(), 'Germany');
+  await userEvent.type(input(), ', Germany');
   expect(op().selectedOptions[0]!.textContent).toBe('is any of');
 });
 
-test('deleting the space after the comma keeps pick mode and sends no trailing separator', async () => {
+test('a comma typed after a pick keeps pick mode and sends no trailing separator', async () => {
   const onApply = form();
   await userEvent.selectOptions(op(), 'contains');
   await userEvent.click(input());
   await userEvent.click(await screen.findByRole('option', { name: 'Ukraine' }));
-  await userEvent.type(input(), '{Backspace}');
+  await userEvent.type(input(), ',');
   expect(input().value).toBe('Ukraine,');
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
   expect(onApply).toHaveBeenLastCalledWith({ field: 'country', op: 'contains', value: 'Ukraine' });
-  await userEvent.type(input(), 'Ger');
+  await userEvent.type(input(), ' Ger');
   await userEvent.click(await screen.findByRole('option', { name: 'Germany' }));
-  expect(op().value).toBe('eq');
+  expect(op().value).toBe('in');
 });
 
 test('spaces before the comma keep pick mode', async () => {
@@ -280,11 +280,11 @@ test('spaces before the comma keep pick mode', async () => {
   await userEvent.selectOptions(op(), 'contains');
   await userEvent.click(input());
   await userEvent.click(await screen.findByRole('option', { name: 'Ukraine' }));
-  await userEvent.keyboard('{ArrowLeft}{ArrowLeft} {End}Ger');
+  await userEvent.keyboard(' , Ger');
   expect(input().value).toBe('Ukraine , Ger');
   await userEvent.click(await screen.findByRole('option', { name: 'Germany' }));
-  expect(op().value).toBe('eq');
-  expect(input().value).toBe('Ukraine, Germany, ');
+  expect(op().value).toBe('in');
+  expect(input().value).toBe('Ukraine, Germany');
 });
 
 test('a reopened contains value with a comma is sent as it was, and a pick does not make it a list', async () => {
@@ -384,9 +384,9 @@ test('typed text that matches no value keeps the panel open with a note and the 
   expect(options()).toEqual([]);
   expect(screen.getByRole('status')).toHaveTextContent('No matching values');
   await userEvent.click(screen.getByRole('button', { name: /Reload values/ }));
-  // The reloaded values hold ZA: it is now the typed text, so there is nothing left to suggest and the note goes.
+  // The reloaded values hold ZA: it is now a finished pick, so the note goes and the others are offered.
   await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
-  expect(options()).toEqual([]);
+  expect(options()).toEqual(['US', 'DE']);
   expect(load).toHaveBeenCalledTimes(2);
 });
 
@@ -443,15 +443,16 @@ test('a picked value in a single-value operator closes the panel', async () => {
 });
 
 test('in list mode the panel closes once every value is picked', async () => {
-  render(<Harness op="eq" src={source(loadOf(['US', 'DE']))} />);
+  render(<Harness op="in" src={source(loadOf(['US', 'DE']))} />);
   await userEvent.click(input());
   await userEvent.click(await screen.findByRole('option', { name: 'US' }));
   expect(options()).toEqual(['DE']);
   await userEvent.click(screen.getByRole('option', { name: 'DE' }));
-  expect(input().value).toBe('US, DE, ');
+  expect(input().value).toBe('US, DE');
+  expect(screen.queryByRole('listbox')).toBeNull();
   expect(screen.queryByRole('status')).toBeNull();
   expect(screen.queryByRole('button', { name: /Reload values/ })).toBeNull();
-  await userEvent.type(input(), 'ZZ');
+  await userEvent.type(input(), ', ZZ');
   expect(screen.getByRole('status')).toHaveTextContent('No matching values');
 });
 
@@ -497,15 +498,37 @@ test('the no-match note and Reload sit in the editor\'s flow next to the input, 
   expect(input().parentElement).toContainElement(note);
 });
 
-test('in a list, typing the one value that is left closes the panel, and a longer match keeps it', async () => {
-  render(<Harness op="eq" src={source(loadOf(['paid', 'paid_late', 'open']))} />);
+test('in a list, a value typed in full is a finished pick: the rest are offered, and the panel closes when none is left', async () => {
+  render(<Harness op="in" src={source(loadOf(['paid', 'paid_late', 'open']))} />);
   await userEvent.click(input());
   await waitFor(() => expect(options()).toEqual(['paid', 'paid_late', 'open']));
-  await userEvent.type(input(), 'paid');
-  expect(options()).toEqual(['paid', 'paid_late']);
-  await userEvent.type(input(), '_late');
+  await userEvent.type(input(), 'paid_late');
+  expect(options()).toEqual(['paid', 'open']);
+  await userEvent.type(input(), ', paid, open');
   expect(screen.queryByRole('listbox')).toBeNull();
   expect(screen.queryByRole('status')).toBeNull();
+});
+
+test('in a list the first pick has no comma, the second adds ", ", and a third is still offered', async () => {
+  render(<Harness op="in" src={source(loadOf(['US', 'DE', 'FR']))} />);
+  await userEvent.click(input());
+  await userEvent.click(await screen.findByRole('option', { name: 'US' }));
+  expect(input().value).toBe('US');
+  expect(options()).toEqual(['DE', 'FR']);
+  await userEvent.click(screen.getByRole('option', { name: 'DE' }));
+  expect(input().value).toBe('US, DE');
+  expect(options()).toEqual(['FR']);
+  await userEvent.click(screen.getByRole('option', { name: 'FR' }));
+  expect(input().value).toBe('US, DE, FR');
+});
+
+test('is: a pick replaces the text and a comma stays in it', async () => {
+  render(<Harness op="eq" src={source(loadOf(['US', 'DE']))} />);
+  await userEvent.click(input());
+  await userEvent.click(await screen.findByRole('option', { name: 'US' }));
+  expect(input().value).toBe('US');
+  await userEvent.type(input(), ', x');
+  expect(input().value).toBe('US, x');
 });
 
 test('a slot of the same structure sits under the input whether idle, loading or with no match, focused or not', async () => {

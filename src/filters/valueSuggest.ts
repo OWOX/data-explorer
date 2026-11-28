@@ -14,8 +14,8 @@ export const valueCache = new Map<string, string[]>();
 /** `first` then `then`, each value once. */
 export const mergeValues = (first: string[], then: string[]): string[] => [...new Set([...first, ...then])];
 
-/** The operators whose value is a list (`a, b` reads as `in`), so a pick adds to what is typed. The others take one text: a pick replaces it. */
-export const LIST_OPS: ReadonlySet<string> = new Set(['eq', 'neq']);
+/** The operators whose value is a comma-separated list (is any of / is none of), so a pick adds to what is typed. The others take one text: a pick replaces it. */
+export const LIST_OPS: ReadonlySet<string> = new Set(['in', 'not_in']);
 
 /** Values are suggested for text columns only. */
 export const canSuggest = (field: Field): boolean => field.category === 'string';
@@ -57,13 +57,20 @@ export function narrow(options: string[], text: string): string[] {
 }
 
 /**
- * The text with `value` added to the values already typed, separated by ", " and ending in ", " so the next pick or word follows.
- * The half-typed piece after the last comma is what the pick completes. A value already typed leaves the text as it was.
+ * The text with `value` added to the values already typed, separated by ", ". No comma trails the last value: it comes with the next one.
+ * The half-typed piece after the last comma is what the pick completes. A value already typed leaves the values as they were.
  */
 export function addValue(text: string, value: string): string {
   const done = finished(text);
-  if (done.some((t) => t.toLowerCase() === value.toLowerCase())) return text;
-  return `${[...done, value].join(', ')}, `;
+  return (done.some((t) => t.toLowerCase() === value.toLowerCase()) ? done : [...done, value]).join(', ');
+}
+
+/**
+ * The text a list's suggestions read: when the piece after the last comma is exactly a known value it is a finished pick, so a ", " is put after it
+ * and the next pick or word follows.
+ */
+export function closePick(text: string, known: string[]): string {
+  return known.includes(lastToken(text)) && lastToken(text) !== '' ? `${text.trimEnd()}, ` : text;
 }
 
 /**

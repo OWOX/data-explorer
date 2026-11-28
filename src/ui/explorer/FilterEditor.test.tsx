@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { describeFilter } from '../../filters/catalogue';
@@ -39,14 +39,14 @@ const flyout = async (name: 'Last…' | 'This…') => { await userEvent.click(sc
 
 test('a date column opens on one list: Today, Yesterday, the Last… and This… flyouts, Custom range, then the other operators', () => {
   open(ts);
-  expect(rows()).toEqual(['Today', 'Yesterday', 'Last…', 'This…', 'Custom range…', 'Before…', 'After…', 'Is blank', 'Is not blank']);
+  expect(rows()).toEqual(['Today', 'Yesterday', 'Last…', 'This…', 'Custom range…', 'On…', 'Before…', 'After…', 'Is blank', 'Is not blank']);
   expect(screen.getByRole('menuitemradio', { name: 'Last…' })).toHaveAttribute('aria-haspopup', 'menu');
   expect(screen.queryByLabelText('Operator')).toBeNull();
   expect(screen.queryByRole('menu', { name: 'Last…' })).toBeNull();
   expect(document.querySelector('[role="separator"]')).not.toBeNull();
 });
 
-test('a DATE column also offers On', () => {
+test('a DATE column offers On too', () => {
   open(day);
   expect(rows()).toEqual(['Today', 'Yesterday', 'Last…', 'This…', 'Custom range…', 'On…', 'Before…', 'After…', 'Is blank', 'Is not blank']);
 });
@@ -184,7 +184,7 @@ test('a timestamp range uses datetime-local inputs, and Presets goes back', asyn
   expect(screen.getByLabelText('Value')).toHaveAttribute('type', 'datetime-local');
   expect(screen.getByLabelText('Operator')).toHaveValue('after');
   await userEvent.click(screen.getByRole('button', { name: '← Presets' }));
-  expect(rows()).toHaveLength(9);
+  expect(rows()).toHaveLength(10);
 });
 
 test('Is blank applies at once; a saved range reopens on its own form', async () => {
@@ -211,7 +211,7 @@ test('time fields use time inputs and have no presets', async () => {
 });
 
 test('describeFilter reads an applied filter in words', () => {
-  expect(describeFilter(num, { op: 'gte', value: '10' })).toBe('≥ 10');
+  expect(describeFilter(num, { op: 'gte', value: '10' })).toBe('greater than or equal 10');
   expect(describeFilter(num, { op: 'between', value: { from: 1, to: 5 } })).toBe('between 1 and 5');
   expect(describeFilter(ts, { op: 'is_blank' })).toBe('is blank');
 });
@@ -341,31 +341,62 @@ test('Last [n] [unit]: the Apply button and Enter in the N box apply a valid cou
 
 const text: Field = { ...num, name: 'city', alias: 'City', type: 'STRING', category: 'string' };
 
-test('text equals: a comma in the typed value marks the rule as a list; without one it is a plain value', async () => {
+test('is: a comma in the typed value is part of the one value, and the operator stays "is"', async () => {
   const { onApply } = open(text);
   await userEvent.selectOptions(screen.getByLabelText('Operator'), 'eq');
   await userEvent.type(screen.getByLabelText('Value'), 'a, b');
+  expect(screen.getByLabelText('Operator')).toHaveDisplayValue('is');
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  expect(onApply).toHaveBeenCalledWith({ field: 'city', op: 'eq', value: 'a, b', list: true });
+  expect(onApply).toHaveBeenCalledWith({ field: 'city', op: 'eq', value: 'a, b' });
 });
 
-test('text equals without a comma has no list marker', async () => {
+test('is any of is its own row and sends in with the comma text', async () => {
   const { onApply } = open(text);
-  await userEvent.selectOptions(screen.getByLabelText('Operator'), 'eq');
-  await userEvent.type(screen.getByLabelText('Value'), 'a');
+  await userEvent.selectOptions(screen.getByLabelText('Operator'), 'in');
+  await userEvent.type(screen.getByLabelText('Value'), 'a, b');
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  expect(onApply).toHaveBeenCalledWith({ field: 'city', op: 'eq', value: 'a' });
+  expect(onApply).toHaveBeenCalledWith({ field: 'city', op: 'in', value: 'a, b' });
 });
 
-test('a reopened list shows as "a, b"; an unmarked comma value reapplies unmarked', async () => {
-  const first = open(text, { field: 'city', op: 'eq', value: 'a, b', list: true });
+test('a number is any of takes comma-separated numbers; a word in it blocks Apply', async () => {
+  const { onApply } = open(num);
+  await userEvent.selectOptions(screen.getByLabelText('Operator'), 'in');
+  expect(screen.getByLabelText('Value')).toHaveAttribute('placeholder', 'comma-separated');
+  await userEvent.type(screen.getByLabelText('Value'), '1, x');
+  expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
+  await userEvent.clear(screen.getByLabelText('Value'));
+  await userEvent.type(screen.getByLabelText('Value'), '1, 2');
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledWith({ field: 'amount', op: 'in', value: '1, 2' });
+});
+
+test('a regex rule is a plain text input with no suggestions', async () => {
+  const { onApply } = open(text);
+  await userEvent.selectOptions(screen.getByLabelText('Operator'), 'regex');
+  expect(screen.getByLabelText('Value')).not.toHaveAttribute('role', 'combobox');
+  await userEvent.type(screen.getByLabelText('Value'), '^a');
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledWith({ field: 'city', op: 'regex', value: '^a' });
+});
+
+test('a timestamp offers all the date conditions through Presets: on takes a datetime', async () => {
+  const { onApply } = open(ts);
+  await userEvent.click(screen.getByRole('menuitem', { name: 'On…' }));
+  expect(screen.getByLabelText('Operator')).toHaveValue('on');
+  fireEvent.change(screen.getByLabelText('Value'), { target: { value: '2026-01-02T10:00' } });
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledWith({ field: 'created_at', op: 'on', value: '2026-01-02T10:00' });
+});
+
+test('a reopened list shows as "a, b" and reapplies as in', async () => {
+  const first = open(text, { field: 'city', op: 'in', value: 'a, b' });
   expect(screen.getByLabelText('Value')).toHaveValue('a, b');
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  expect(first.onApply).toHaveBeenCalledWith({ field: 'city', op: 'eq', value: 'a, b', list: true });
+  expect(first.onApply).toHaveBeenCalledWith({ field: 'city', op: 'in', value: 'a, b' });
 });
 
 test('describeFilter reads a list as any of / none of', () => {
-  expect(describeFilter(text, { op: 'eq', value: 'a, b', list: true })).toBe('is any of a, b');
-  expect(describeFilter(text, { op: 'neq', value: 'a,b', list: true })).toBe('is none of a, b');
-  expect(describeFilter(text, { op: 'eq', value: 'San Francisco, CA' })).toBe('equals San Francisco, CA');
+  expect(describeFilter(text, { op: 'in', value: 'a, b' })).toBe('is any of a, b');
+  expect(describeFilter(text, { op: 'not_in', value: 'a,b' })).toBe('is none of a, b');
+  expect(describeFilter(text, { op: 'eq', value: 'San Francisco, CA' })).toBe('is San Francisco, CA');
 });
