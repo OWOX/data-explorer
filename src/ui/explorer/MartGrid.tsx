@@ -339,8 +339,8 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   // Rules of a column that is no longer shown go with it; any function or bucket left groups the rows (no default order then: it may name nothing shown).
   const keptAgg = useMemo(() => keepVisible(agg, shown), [agg, shown]);
   const aggNow = useMemo(() => sanitizeAggregation(keptAgg, schema), [keptAgg, schema]);
-  // The Unique Counts that apply: the mart offers the metric and (for a joined mart) a column of it is shown. With the joined marts unread, a joined path is parked, not dropped.
-  const ucNow = useMemo(() => keepUnique(uc, schema, shown), [uc, schema, shown]);
+  // The Unique Counts that apply: the mart offers the metric and (for a joined mart) a column of it is shown, or the report keeps it with no column. With the joined marts unread, a joined path is parked, not dropped.
+  const ucNow = useMemo(() => keepUnique(uc, schema, shown, epNow), [uc, schema, shown, epNow]);
   if (sourcesRead && !sameList(ucNow, uc)) {
     setUc(ucNow);
     // A metric dropped here (a Refresh changed what a mart offers) takes the member's sort on its column with it.
@@ -427,8 +427,11 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
     if (!ucNow.length) return base;
     const make = (path: string): Output => ({ key: uniqueKey(path), column: uniqueKey(path), unique: path, sortable: true });
     const after = withUniqueAfter(base, (o) => byName.get(o.column)?.joined?.aliasPath ?? '', ucNow, make);
+    // A joined mart kept with no column shows its Unique Count alone, after the marts with columns.
+    const withColumns = new Set(base.map((o) => byName.get(o.column)?.joined?.aliasPath ?? ''));
+    const alone = ucNow.filter((p) => p !== '' && !withColumns.has(p)).map(make);
     // The main mart's Unique Count still groups the rows when the mart has no column: it leads, so it is never hidden.
-    return ucNow.includes('') && !base.some((o) => !byName.get(o.column)?.joined) ? [make(''), ...after] : after;
+    return ucNow.includes('') && !base.some((o) => !byName.get(o.column)?.joined) ? [make(''), ...after, ...alone] : [...after, ...alone];
   }, [wanted, aggNow, ucNow, byName]);
   // The stand-in fields of the Unique Count columns, by row key.
   const uniqueFields = useMemo(() => new Map(ucNow.map((p) => { const src = sources.find((x) => x.aliasPath === p); return [uniqueKey(p), uniqueField(p, src && { martId: src.martId, label: src.label })] as const; })), [ucNow, sources]);
@@ -486,16 +489,16 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
     const nextAgg = keepVisible(more ? more(agg) : agg, cols);
     // A HAVING filter on a hidden column's function goes with it, in the same step.
     if (nextAgg !== agg) applyAgg(nextAgg);
-    // A joined mart that has no column left takes its Unique Count with it (kept as it is while the joined marts are unread).
-    const ucKept = sourcesRead ? keepUnique(uc, schema, cols) : uc;
-    if (!sameList(ucKept, uc)) setUc(ucKept);
-    setOwn((cur) => { const kept = cur && sortsOnColumns(cur, [...cols, ...ucKept.map(uniqueKey)]); return cur && cur.length > 0 && kept!.length === 0 ? null : kept; });
     // A joined mart that has no column left stays in the report, kept empty (from any way of hiding its last column); one that got a column leaves the empty paths.
-    // Its filters and slices stay and are still sent; its Unique Count went above, with its last column.
+    // Its filters, slices and Unique Count stay and are still sent.
     const lost = [...inUsePaths(visible, sources)].filter(Boolean).filter((p) => !inUsePaths(cols, sources).has(p));
     const nextEp = sourcesRead ? keepEmpty([...ep, ...lost], schema, cols) : ep;
     emptyNow.current = nextEp;
     if (!sameList(nextEp, ep)) setEp(nextEp);
+    // The Unique Count of a joined mart that no longer has a column or a place in the report goes (kept as it is while the joined marts are unread).
+    const ucKept = sourcesRead ? keepUnique(uc, schema, cols, nextEp) : uc;
+    if (!sameList(ucKept, uc)) setUc(ucKept);
+    setOwn((cur) => { const kept = cur && sortsOnColumns(cur, [...cols, ...ucKept.map(uniqueKey)]); return cur && cur.length > 0 && kept!.length === 0 ? null : kept; });
     // A joined mart that has no column left remembers what it was showing, as its own field names. No empty pick is saved: it would wipe the pick it came with.
     const left = joinedMartIds(visible, sources).filter((m) => !joinedMartIds(cols, sources).includes(m));
     columnStore.save(martId, cols);
@@ -584,7 +587,8 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
     if (button && takeFocusFor(martId)) button.focus();
   }, [groups, martId, configSlot]);
   // The marts kept with no column count too: with one, the main mart can be removed. Its last own column stays only while another mart has columns.
-  const emptyMarts = pathMarts.filter((m) => m.empty);
+  // One that shows a Unique Count column is a group of the grid already.
+  const emptyMarts = pathMarts.filter((m) => m.empty && !groups.some((g) => g.path === m.path));
   // The main mart is in the report even with no column (Clear, or its last one unticked): it has no group then, but is listed and removable like the rest.
   const mainEmpty = !groups.some((g) => g.main);
   const several = groups.length + emptyMarts.length + (mainEmpty ? 1 : 0) > 1;

@@ -105,7 +105,7 @@ test('useCardClick with removePaths is one Undo step, and remembers only the rem
   render(<AppServices ctx={ctx}><StoreProvider><Probe /></StoreProvider></AppServices>);
   await waitFor(() => expect(state.selection.martId).toBe('orders'));
   await click('customers');
-  await waitFor(() => expect(state.grids.orders?.columns.some((c) => c.startsWith('customers__'))).toBe(true));
+  await waitFor(() => expect(state.grids.orders?.emptyPaths).toContain('customers'));
   // Countries sits at two paths; the grid shows name under one and name and code under the other.
   const wide = [...state.grids.orders!.columns, 'customers__countries__name', 'stores__countries__name', 'stores__countries__code'];
   dispatch({ type: 'editGrid', martId: 'orders', grid: { ...state.grids.orders!, columns: wide } });

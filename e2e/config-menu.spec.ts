@@ -68,8 +68,8 @@ test('a data mart on a path with no column is listed after the shown ones; ticki
   await joinedRowsArrived(page);
   await expectStillOpen(page, panel);
   await closeConfig(page);
-  // The columns of a data mart sit together, in the order the marts were added: Customers comes back last.
-  await expect(groupTitles(page)).toHaveText(['Orders', 'Countries', 'Customers']);
+  // The columns of a data mart sit together, in the order the marts were added; a mart that shows only its Unique Count (Countries) follows the marts with columns.
+  await expect(groupTitles(page)).toHaveText(['Orders', 'Customers', 'Countries']);
 });
 
 test('Charts: the config menu opens with Add chart and Charts, a chart’s menu has Duplicate and Hide and no Remove, and Charts brings a hidden chart back', async ({ page }) => {

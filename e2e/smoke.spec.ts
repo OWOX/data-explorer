@@ -31,8 +31,16 @@ async function openColumnSub(data: Locator, title: string, row: 'Filter' | 'Aggr
 }
 
 /** Adds the mart to the grid with a click (the new card is selected), then promotes it with the header's "Make it main" button. */
-async function makeMain(page: Page, title: string) {
+async function makeMain(page: Page, title: string, plain = false) {
   await martCard(page, title).click();
+  // The card joins the mart with its Unique Count alone, which groups the grid: `plain` swaps that for a field of its own.
+  if (plain) {
+    await openFields(page, title);
+    const panel = page.getByRole('dialog', { name: title, exact: true });
+    await panel.getByLabel('name', { exact: true }).click();
+    await panel.getByRole('option', { name: 'Unique Count' }).click();
+    await closeConfig(page);
+  }
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Orders', title]);
   await band(page, 'marts').getByRole('button', { name: /^Make it main: / }).click();
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText([title]);
@@ -270,7 +278,7 @@ test('a mart Orders cannot join is not in the band, not even as a ghost; a searc
 test('a reference column shows the stored value as plain text; Referenced by opens the referencing mart, and Undo restores the record', async ({ page }) => {
   await ordersGrid(page);
   const row = band(page, 'row');
-  await makeMain(page, 'Customers');
+  await makeMain(page, 'Customers', true);
   const data = band(page, 'data');
   await expect(data.getByRole('row')).toHaveCount(62);
   await data.getByRole('row').nth(2).click();
@@ -408,12 +416,14 @@ test('Copy to clipboard: the loaded rows are copied as TSV and the status says s
   expect(text.split('\n')[0]).toContain('\t');
 });
 
-test('selecting a joinable mart adds its first text column; the × removes it; reselecting restores the same field', async ({ page }) => {
+test('selecting a joinable mart adds its Unique Count alone; the × removes it; reselecting restores the field it showed', async ({ page }) => {
   const data = await ordersGrid(page);
   const title = (t: string) => expect(data.locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(t.split(' + '));
   await martCard(page, 'Customers').click();
   await title('Orders + Customers');
-  await expect(data.getByRole('columnheader', { name: /Customers · name/ })).toBeVisible();
+  // No dimension comes with it: the mart is counted by its key.
+  await expect(data.getByRole('columnheader', { name: /Customers · name/ })).toHaveCount(0);
+  await expect(data.getByRole('columnheader', { name: /Unique Count/ })).toHaveCount(1);
   await expect(martCard(page, 'Customers')).toHaveAttribute('aria-pressed', 'true');
   // choose a second field, take the mart out, bring it back
   await tick(page, 'email', 'Customers');
@@ -423,8 +433,9 @@ test('selecting a joinable mart adds its first text column; the × removes it; r
   await expect(data.getByRole('columnheader', { name: /Customers ·/ })).toHaveCount(0);
   await martCard(page, 'Customers').click();
   await title('Orders + Customers');
-  await expect(data.getByRole('columnheader', { name: /Customers · name/ })).toBeVisible();
+  // It comes back with what it showed (email), not with the default.
   await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
+  await expect(data.getByRole('columnheader', { name: /Customers · name/ })).toHaveCount(0);
 });
 
 test('removing the main mart from the config menu promotes the next joined one; a mart the main one cannot join becomes the main one through a search', async ({ page }) => {
@@ -633,6 +644,8 @@ test('a table wider than the page scrolls inside its card and never widens the b
   await expect(martCard(page, 'Customers')).not.toHaveAttribute('data-focused', /.*/);
   await martCard(page, 'Products').click();
   await expect(groupTitles(page).filter({ hasText: 'Products' })).toHaveCount(1);
+  // A mart joins with its Unique Count alone: its columns are ticked.
+  await tick(page, 'SKU', 'Products');
   await tick(page, 'email', 'Customers');
   await tick(page, 'is_gift');
   await martCard(page, 'Stores').click();
@@ -674,11 +687,11 @@ test('the config menu lists each mart\'s own fields only; the tabs and the toolb
   await expect(dialog.getByLabel('status', { exact: true })).toHaveCount(0);
 });
 
-test('selecting a mart adds a text field and a metric; the filter mark carries no text', async ({ page }) => {
+test('selecting a mart adds one column, its Unique Count or its first metric; the filter mark carries no text', async ({ page }) => {
   const data = await ordersGrid(page);
   await martCard(page, 'Products').click();
   await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Orders', 'Products']);
-  await expect(data.locator('thead tr[data-group-row] th[data-group]').nth(1)).toHaveAttribute('colspan', '2');
+  await expect(data.locator('thead tr[data-group-row] th[data-group]').nth(1)).toHaveAttribute('colspan', '1');
   await openColumnSub(data, 'id', 'Filter');
   await page.getByLabel('Value').fill('3');
   await page.getByRole('button', { name: 'Apply' }).click();

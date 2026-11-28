@@ -232,3 +232,37 @@ describe('the Unique Count column', () => {
     expect(t.of('orders').at(-1)!.o.uniqueCount).toEqual(['']);
   });
 });
+
+describe('a joined mart kept with no column', () => {
+  const kept: GridState = { columns: ['id', 'status'], filters: {}, sorts: null, limit: 200, uniqueCount: ['customers'], emptyPaths: ['customers'] };
+
+  test('shows its Unique Count alone, and the query joins its path with that metric and no column of it', async () => {
+    const t = setup({ grid: kept });
+    await t.view();
+    await waitFor(() => expect(headers()).toEqual(['id', 'status', 'Unique Count']));
+    await waitFor(() => expect(t.of('orders').at(-1)!.o.uniqueCount).toEqual(['customers']));
+    expect(t.of('orders').at(-1)!.o.column).toEqual(['id', 'status']);
+    const spans = [...groupRow().querySelectorAll<HTMLTableCellElement>('th[data-group-path]')].map((h) => [h.dataset.groupPath, h.colSpan]);
+    expect(spans).toEqual([['', 2], ['customers', 1]]);
+    expect(t.state.current!.grids.orders).toMatchObject({ uniqueCount: ['customers'], emptyPaths: ['customers'] });
+  });
+
+  test('lists the mart once in the config menu, with its Unique Count on', async () => {
+    const t = setup({ grid: kept });
+    await t.view();
+    await waitFor(() => expect(headers()).toContain('Unique Count'));
+    const menu = await (async () => { await closeConfigMenu(); return picker('Customers'); })();
+    expect(menu.getByRole('option', { name: 'Unique Count' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  test('a tick of one of its fields gives it a column and keeps the Unique Count; the mart leaves the empty paths', async () => {
+    const t = setup({ grid: kept });
+    await t.view();
+    await waitFor(() => expect(headers()).toContain('Unique Count'));
+    const fields = await picker('Customers');
+    await userEvent.click(fields.getByRole('option', { name: 'name' }));
+    await waitFor(() => expect(headers()).toEqual(['id', 'status', 'name', 'Unique Count']));
+    expect(t.state.current!.grids.orders!.emptyPaths).toBeUndefined();
+    expect(t.state.current!.grids.orders!.uniqueCount).toEqual(['customers']);
+  });
+});

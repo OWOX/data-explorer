@@ -16,6 +16,7 @@ function setup(opts: { gate?: Promise<void> } = {}) {
   const ctx = createMockCtx(demoFixtures(), { latencyMs: 0, keyShown: true });
   const puts: { id: string; doc: { columns: string[]; picks?: Record<string, string[]> } }[] = [];
   const rows: { id: string; o: { sort?: unknown } }[] = [];
+  const grouped: { id: string; o: { column?: string[]; uniqueCount?: string[] } }[] = [];
   const reads: string[] = [];
   const col = ctx.collections;
   const realGet = ctx.owox.getJson.bind(ctx.owox);
@@ -28,11 +29,11 @@ function setup(opts: { gate?: Promise<void> } = {}) {
         if (path.endsWith('/blendable-schema')) { reads.push(path); if (opts.gate) return opts.gate.then(() => realGet<T>(path, q)); return held.then(() => realGet<T>(path, q)); }
         return realGet<T>(path, q);
       }) as typeof ctx.owox.getJson,
-      dataMarts: { ...ctx.owox.dataMarts, traverseData: (id: string, o: Parameters<typeof realTraverse>[1]) => { if (!(o as { uniqueCount?: unknown }).uniqueCount) rows.push({ id, o }); return realTraverse(id, o); } },
+      dataMarts: { ...ctx.owox.dataMarts, traverseData: (id: string, o: Parameters<typeof realTraverse>[1]) => { if (!(o as { uniqueCount?: unknown }).uniqueCount) rows.push({ id, o }); else grouped.push({ id, o: o as never }); return realTraverse(id, o); } },
     },
     collections: <T,>(name: string) => { const c = col<T>(name); return name === GRID_COLUMNS_COLLECTION ? { get: c.get, put: (id: string, d: T) => { puts.push({ id, doc: d as never }); return c.put(id, d); } } : c; } };
   render(<AppServices ctx={spied}><StoreProvider><App /></StoreProvider></AppServices>);
-  return { puts, rows, reads };
+  return { puts, rows, reads, grouped };
 }
 const data = () => document.getElementById('band-data')!;
 const row = () => document.getElementById('band-row')!;
@@ -51,13 +52,15 @@ const removeFromReport = async (name: string) => { const panel = await openField
 const configButton = () => within(data()).getByRole('button', { name: 'Configure data' });
 const undo = () => userEvent.click(screen.getByRole('button', { name: 'Undo' }));
 
-test('selecting a joinable data mart adds its first text column, titles the grid "Orders + Customers" and the card looks like the main one', async () => {
+test('selecting a joinable data mart adds its Unique Count alone (no dimension), titles the grid "Orders + Customers" and the card looks like the main one', async () => {
   setup();
   await ready();
   await click('Customers');
   await waitFor(() => expect(title()).toBe('Orders + Customers'));
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
   expect(headers()).toHaveLength(6);
+  expect(headers().at(-1)).toMatch(/^Unique Count/);
+  expect(headers().some((h) => /^name/.test(h))).toBe(false);
   expect(card('Customers')).toHaveAttribute('aria-pressed', 'true');
   expect(card('Orders')).toHaveAttribute('aria-pressed', 'true');
   expect(within(card('Customers')).queryByRole('note', { name: 'Joined' })).toBeNull();
@@ -79,9 +82,10 @@ test('the × on a joined card takes its columns out, and selecting it again brin
   expect(title()).toBe('Orders');
   expect(card('Customers')).toHaveAttribute('aria-pressed', 'false');
   await click('Customers');
-  await waitFor(() => expect(headers()).toHaveLength(7));
-  expect(within(data()).getAllByRole('button', { name: /^Sort by Customers · / })).toHaveLength(2);
-  await waitFor(() => expect(t.puts.some((p) => p.id === 'customers' && JSON.stringify(p.doc).includes('"lastShown":["name","email"]'))).toBe(true), { timeout: 3000 });
+  // It comes back with what it showed: email alone, and no Unique Count (that is only the default of a mart with no memory).
+  await waitFor(() => expect(headers()).toHaveLength(6));
+  expect(within(data()).getAllByRole('button', { name: /^Sort by Customers · / })).toHaveLength(1);
+  await waitFor(() => expect(t.puts.some((p) => p.id === 'customers' && JSON.stringify(p.doc).includes('"lastShown":["email"]'))).toBe(true), { timeout: 3000 });
 });
 
 test('a joined mart\'s filters and sorts leave with it', async () => {
@@ -243,7 +247,10 @@ test('two quick clicks while the joined marts are still being read both join, an
   fireEvent.click(card('Stores'));
   release();
   await waitFor(() => expect(title()).toBe('Orders + Customers + Stores'));
-  await waitFor(() => expect(t.puts.at(-1)?.doc.columns).toEqual(expect.arrayContaining(['customers__name', 'stores__name'])));
+  await waitFor(() => expect(headers().filter((h) => /^Unique Count/.test(h))).toHaveLength(2));
+  const saved = () => (t.puts.filter((p) => p.id === 'orders').at(-1)?.doc as { gridView?: { uc?: string[]; ep?: string[] } } | undefined)?.gridView;
+  await waitFor(() => expect(saved()?.uc).toEqual(expect.arrayContaining(['customers', 'stores'])), { timeout: 3000 });
+  expect(saved()?.ep).toEqual(expect.arrayContaining(['customers', 'stores']));
 });
 
 test('Undo of a card click is saved too: the last saved columns have no Customers column', async () => {
@@ -260,16 +267,19 @@ test('adding a mart reads the rows once, taking it out reads none, and each mart
   const t = setup();
   await ready();
   await new Promise((r) => setTimeout(r, 150));
-  const before = t.rows.length;
+  const before = t.grouped.length;
   await click('Customers');
   await waitFor(() => expect(headers()).toHaveLength(6));
   await new Promise((r) => setTimeout(r, 200));
-  expect(t.rows.slice(before).filter((r) => r.id === 'orders' && r.o.sort)).toHaveLength(1);
+  // The mart joins with its Unique Count, so the grid reads once, grouped by the main mart's own columns.
+  expect(t.grouped.slice(before).filter((r) => r.id === 'orders' && r.o.column?.length && r.o.uniqueCount?.includes('customers'))).toHaveLength(1);
   const afterAdd = t.rows.length;
+  const groupedAfterAdd = t.grouped.length;
   await remove('Customers');
   await waitFor(() => expect(headers()).toHaveLength(5));
   await new Promise((r) => setTimeout(r, 200));
   expect(t.rows).toHaveLength(afterAdd);
+  expect(t.grouped).toHaveLength(groupedAfterAdd);
   expect(t.reads.filter((p) => p.includes('/orders/'))).toHaveLength(1);
 });
 
@@ -284,7 +294,7 @@ test('what a removed mart showed is saved exactly: the fields, in the order show
   await closeConfigMenu();
   await remove('Customers');
   await waitFor(() => expect(headers()).toHaveLength(5));
-  await waitFor(() => expect(t.puts.some((p) => p.id === 'customers' && JSON.stringify(p.doc).includes('"lastShown":["name","email"]'))).toBe(true), { timeout: 3000 });
+  await waitFor(() => expect(t.puts.some((p) => p.id === 'customers' && JSON.stringify(p.doc).includes('"lastShown":["email"]'))).toBe(true), { timeout: 3000 });
 });
 
 const groupRow = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup');
@@ -354,12 +364,18 @@ test('the last own column of the main mart can be unticked while a joined mart i
   await ready();
   await click('Customers');
   await waitFor(() => expect(headers()).toHaveLength(6));
+  // The grid keeps a column: Customers has one of its own besides its Unique Count, so the main mart's last one can go.
+  await openFields('Customers');
+  await userEvent.click(await screen.findByLabelText('email'));
+  await waitFor(() => expect(headers()).toHaveLength(7));
+  await closeConfigMenu();
   await openFields('Orders');
   for (const label of ['id', 'Customer', 'Product', 'Store']) await userEvent.click(await screen.findByLabelText(label));
-  await waitFor(() => expect(headers()).toEqual(['status', 'name']));
+  const first = () => headers().map((h) => h.replace(/\s.*$/, ''));
+  await waitFor(() => expect(first()).toEqual(['status', 'email', 'Unique']));
   expect(screen.getByRole('option', { name: 'status' })).not.toHaveAttribute('aria-disabled', 'true');
   await userEvent.click(screen.getByRole('option', { name: 'status' }));
-  await waitFor(() => expect(headers()).toEqual(['name']));
+  await waitFor(() => expect(first()).toEqual(['email', 'Unique']));
   expect(groupTitles()).toEqual(['Customers']);
   expect(screen.getByRole('menuitem', { name: 'Orders' })).toBeInTheDocument();
   expect(card('Orders')).toHaveClass('lit');
@@ -392,7 +408,7 @@ test('a mart that leaves the grid remembers its own field names in its own grid-
   // Customers leaves the grid
   await remove('Customers');
   await waitFor(() => expect(title()).toBe('Orders'));
-  await waitFor(() => expect(t.puts.some((p) => p.id === 'customers' && JSON.stringify(p.doc).includes('"lastShown":["name","email"]'))).toBe(true), { timeout: 3000 });
+  await waitFor(() => expect(t.puts.some((p) => p.id === 'customers' && JSON.stringify(p.doc).includes('"lastShown":["email"]'))).toBe(true), { timeout: 3000 });
 });
 
 test('a double activation of Remove from report takes the mart out once and never puts it back', async () => {
@@ -457,6 +473,11 @@ test('picking a source saves what the main and its joined marts were showing, li
   await ready();
   await click('Customers');
   await waitFor(() => expect(headers()).toHaveLength(6));
+  // Customers shows a column of its own, so it has something to remember.
+  await openFields('Customers');
+  await userEvent.click(await screen.findByLabelText('email'));
+  await waitFor(() => expect(headers()).toHaveLength(7));
+  await closeConfigMenu();
   fireEvent.click(within(document.getElementById('band-sources')!).getByText('Google Analytics 4').closest('article')!);
   await waitFor(() => expect(t.puts.some((p) => p.id === 'customers' && JSON.stringify(p.doc).includes('"lastShown"'))).toBe(true), { timeout: 3000 });
   await waitFor(() => expect(t.puts.some((p) => p.id === 'orders' && JSON.stringify(p.doc).includes('"lastShown"'))).toBe(true), { timeout: 3000 });

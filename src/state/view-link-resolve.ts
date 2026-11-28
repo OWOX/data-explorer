@@ -44,12 +44,12 @@ export function pruneGrid(grid: GridState, schema: Schema): { grid: GridState | 
   for (const [k, f] of Object.entries(grid.slices ?? {})) {
     if (schema.some((x) => x.name === f.field && x.joined)) slices[k] = f; else dropped.filters++;
   }
-  // A Unique Count whose metric is not offered (no usable key, a joined mart that is gone or not on the grid) is left out and counted.
-  const uniqueCount = keepUnique(grid.uniqueCount, schema, columns);
-  dropped.uniqueCount += (grid.uniqueCount?.length ?? 0) - uniqueCount.length;
   // An empty path the mart no longer joins by, or that now has a column, is left out and counted with the columns.
   const emptyPaths = keepEmpty(grid.emptyPaths, schema, columns);
   dropped.columns += (grid.emptyPaths?.length ?? 0) - emptyPaths.length;
+  // A Unique Count whose metric is not offered (no usable key, a joined mart that is gone, or one with no column that the report does not keep) is left out and counted.
+  const uniqueCount = keepUnique(grid.uniqueCount, schema, columns, emptyPaths);
+  dropped.uniqueCount += (grid.uniqueCount?.length ?? 0) - uniqueCount.length;
   // The metric's column can be sorted by its row key.
   const metricKeys = new Set(uniqueCount.map(uniqueKey));
   let sorts = grid.sorts;

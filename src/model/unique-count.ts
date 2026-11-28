@@ -11,14 +11,15 @@ export const uniqueKey = (aliasPath: string): string => (aliasPath === '' ? UNIQ
 /** The alias paths whose Unique Count works: the main mart when it has a primary key (a hidden or composite one counts), a joined mart when the backend says so. */
 export const uniquePathsOf = (schema: Schema): string[] => [...(hasPrimaryKey(schema) ? [''] : []), ...(schema.joinedUniqueCount ?? [])];
 
-/** The paths that stay on: available, and (for a joined mart) with a column of its own on the grid. First occurrence wins, main first. */
-export function keepUnique(paths: readonly string[] | undefined, schema: Schema, columns: readonly string[]): string[] {
+/** The paths that stay on: available, and (for a joined mart) with a column of its own on the grid, or kept in the report with no column (`empty`, the alias paths of `GridState.emptyPaths`). First occurrence wins, main first. */
+export function keepUnique(paths: readonly string[] | undefined, schema: Schema, columns: readonly string[], empty: readonly string[] = []): string[] {
   if (!paths?.length) return [];
   const offered = new Set(uniquePathsOf(schema));
   const shown = new Set(columns);
-  const onGrid = (path: string) => path === '' || schema.some((f) => f.joined?.aliasPath === path && shown.has(f.name));
-  const kept = [...new Set(paths)].filter((p) => offered.has(p) && onGrid(p));
-  return kept.includes('') ? ['', ...kept.filter((p) => p !== '')] : kept;
+  const kept = new Set(empty);
+  const onGrid = (path: string) => path === '' || (kept.has(path) && schema.some((f) => f.joined?.aliasPath === path)) || schema.some((f) => f.joined?.aliasPath === path && shown.has(f.name));
+  const out = [...new Set(paths)].filter((p) => offered.has(p) && onGrid(p));
+  return out.includes('') ? ['', ...out.filter((p) => p !== '')] : out;
 }
 
 /** A stand-in field for the metric's column, so a header, a sort and a group read it like any other column. Read-only: no function, no filter. */
