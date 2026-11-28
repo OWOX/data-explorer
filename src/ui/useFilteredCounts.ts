@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { cachedFiltered, countFiltered, filteredKey, forgetFiltered, martOfKey, rememberFiltered } from '../api/filtered-counts';
+import { cachedFiltered, countFiltered, filteredKey, forgetFiltered, rememberFiltered } from '../api/filtered-counts';
 import { COUNT_CONCURRENCY } from '../config';
-import { hasPrimaryKey } from '../records/relationships';
 import type { GridRules } from '../filters/card-rules';
 import type { Model } from '../model/types';
 import type { TraverseFilter } from '../sdk/types';
@@ -109,11 +108,11 @@ export function useFilteredCounts(model: Model | null, byPath: ReadonlyMap<strin
     setTick((t) => t + 1);
   }, [ctx]);
 
-  const seed = useCallback((key: string, n: number) => {
-    // The grid's total counts the main mart's rows, taken as its unique records when it has a key (the keys are unique), so the label matches the card's other reads.
-    rememberFiltered(ctx, key, n, hasPrimaryKey(schemas.peek(martOfKey(key)) ?? []));
+  const seed = useCallback((key: string, n: number, unique: boolean) => {
+    // `unique`: the grid's own schema says the main mart has a key. Its total counts rows, taken as unique records then (the keys are unique), so the label matches the card's other reads.
+    rememberFiltered(ctx, key, n, unique);
     setTick((t) => t + 1);
-  }, [ctx, schemas]);
+  }, [ctx]);
 
   const filtered = useMemo(() => {
     void tick; // a seed changes the cache, not the inputs

@@ -5,7 +5,6 @@ import { COUNT_CONCURRENCY } from '../config';
 import type { DqSummary, Model } from '../model/types';
 import { forgetAllValues } from '../search/valueMatch';
 import { useServices, useStore } from '../state/store';
-import { hasPrimaryKey } from '../records/relationships';
 import type { CountState } from './bands/cards';
 import { errorMessage } from './ErrorBox';
 
@@ -117,15 +116,14 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
 
   // A count the grid already has for this card: no read is needed for it. A queued read is dropped, a running one is
   // ignored when it ends (it is billed anyway), and the card's own request on scroll-in will not read again this generation.
-  const offer = useCallback((id: string, value: number) => {
+  const offer = useCallback((id: string, value: number, unique: boolean) => {
     seqs.current.latest.set(id, ++seqs.current.next);
     queue.current = queue.current.filter((q) => q.id !== id);
     asked.current.set(id, generation.current);
-    // The grid's total counts the main mart's rows, taken as its unique records when it has a key (the keys are unique), so the label matches the card's other reads.
-    const unique = hasPrimaryKey(schemas.peek(id) ?? []);
+    // `unique`: the grid's own schema says the main mart has a key. Its total counts rows, taken as unique records then (the keys are unique), so the label matches the card's other reads.
     setCounts((c) => new Map(c).set(id, { state: 'ok', value, unique }));
     void counter.store(id, value, unique);
-  }, [counter, schemas]);
+  }, [counter]);
 
   // The card keeps its count, dimmed, while the grid's Refresh reads the total that will replace it. No read.
   const hold = useCallback((id: string) => {

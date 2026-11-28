@@ -3,6 +3,7 @@ import { FILTERED_COUNT_LIMIT } from '../config';
 import type { Schema } from '../model/types';
 import type { Ctx, TraverseFilter } from '../sdk/types';
 import { perCtx } from '../sdk/per-ctx';
+import { hasPrimaryKey } from '../records/relationships';
 import { countMart, type Counted } from './row-counts';
 
 type Entry = { martId: string; n: number; unique: boolean };
@@ -41,7 +42,8 @@ function put(ctx: Ctx, key: string, martId: string, n: number, unique: boolean):
 /** Reads the count unless cached. A read already under way for the same key is shared. A failure is never cached. */
 export function countFiltered(ctx: Ctx, key: string, martId: string, schema: Schema, rules: readonly TraverseFilter[]): Promise<Counted> {
   const hit = cachedFiltered(ctx, key);
-  if (hit !== undefined) return Promise.resolve({ value: hit.n, unique: hit.unique });
+  // An entry made the other way (rows, or unique records) is not this mart's count now: read again and replace it.
+  if (hit !== undefined && hit.unique === hasPrimaryKey(schema)) return Promise.resolve({ value: hit.n, unique: hit.unique });
   const { reading } = storeOf(ctx);
   const under = reading.get(key);
   if (under) return under.read;

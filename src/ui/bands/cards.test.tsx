@@ -350,6 +350,11 @@ describe('the row count badge', () => {
     await userEvent.hover(screen.getByText('56 unique records'));
     expect((await screen.findAllByText("56 unique records match this data mart's filters")).length).toBeGreaterThan(0);
   });
+  test('a filtered count of another kind than the total leaves the total out', async () => {
+    renderMart({ count: { state: 'ok', value: 1234 }, filtered: { state: { state: 'ok', value: 56, unique: true }, partial: false } });
+    await userEvent.hover(screen.getByText('56 unique records'));
+    expect((await screen.findAllByText("56 unique records match this data mart's filters")).length).toBeGreaterThan(0);
+  });
   test('a count with no flag still says rows', () => {
     renderMart({ count: { state: 'ok', value: 3, unique: false } });
     expect(screen.getByText('3 rows')).toBeInTheDocument();

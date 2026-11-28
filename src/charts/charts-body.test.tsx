@@ -1433,5 +1433,6 @@ test('Charts under a filter: the match badge joins the scorecard read and sends 
   const sent = t.queries.slice(before);
   expect(sent.filter((o) => isScore(o) && !!o.filter?.length)).toHaveLength(1);
   expect(sent.filter(isBadge)).toHaveLength(0);
+  expect(sent.filter(isCardUniqueCount).length).toBeLessThanOrEqual(1); // the card's own read, so no chart read of that shape hides behind the exclusion
   expect(sent.filter(isBareRange)).toHaveLength(0);
 });

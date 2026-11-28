@@ -111,9 +111,24 @@ test('a mart with a key is counted by unique records, with the rules as filter a
 });
 
 test('a unique count that is not a number is an error and is not cached', async () => {
-  const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': '7' }]));
+  const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 'abc' }]));
   const ctx = stubCtx({ dataMarts: { list: vi.fn(), traverseData } });
   const key = filteredKey('a', rules, null);
   await expect(countFiltered(ctx, key, 'a', keyed, rules)).rejects.toThrow();
   expect(cachedFiltered(ctx, key)).toBeUndefined();
+});
+
+test('a cached entry made the other way is not served: it is read again and replaced', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 7 }]));
+  const ctx = stubCtx({ dataMarts: { list: vi.fn(), traverseData } });
+  const key = filteredKey('a', rules, null);
+  rememberFiltered(ctx, key, 42, false);
+  expect(await countFiltered(ctx, key, 'a', keyed, rules)).toEqual({ value: 7, unique: true });
+  expect(traverseData).toHaveBeenCalledTimes(1);
+  expect(cachedFiltered(ctx, key)).toEqual({ n: 7, unique: true });
+});
+
+test('a unique count that arrives as a numeric string is a number', async () => {
+  const ctx = stubCtx({ dataMarts: { list: vi.fn(), traverseData: vi.fn(async () => traversalOf([{ 'Unique Count': '7' }])) } });
+  expect(await countFiltered(ctx, filteredKey('a', rules, null), 'a', keyed, rules)).toEqual({ value: 7, unique: true });
 });

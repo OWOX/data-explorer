@@ -139,7 +139,7 @@ function CountBadge({ count, filtered, countable, onRetry, onRetryFiltered }: { 
   const label = unique ? uniqueRecordsLabel : rowCountLabel;
   const text = !own
     ? label(num(shown.value))
-    : count.state === 'ok' && count.value !== null && shown.value <= count.value
+    : count.state === 'ok' && count.value !== null && shown.value <= count.value && !!count.unique === unique
       ? `${num(shown.value)} of ${num(count.value)} ${what} match this data mart's filters`
       : `${num(shown.value)} ${what} match this data mart's filters`;
   return <Tooltip content={tip(text)}><span className={`dm-badge${shown.stale ? ' dm-stale' : ''}`} aria-busy={shown.stale || undefined}>{label(compactNumber(shown.value))}</span></Tooltip>;

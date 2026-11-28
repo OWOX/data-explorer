@@ -78,8 +78,13 @@ test('countMart sends the filter with the unique count', async () => {
   expect(traverseData).toHaveBeenCalledWith('a', { uniqueCount: [''], filter });
 });
 
+test('a Unique Count a reader returns as a numeric string is a number', async () => {
+  const ctx = stubCtx({ dataMarts: { list: vi.fn(), traverseData: uniqueOf('5') } });
+  expect(await countMart(ctx, 'a', withPk)).toEqual({ value: 5, unique: true });
+});
+
 test('a Unique Count that is not a number is an error, never 0, and stores nothing', async () => {
-  for (const bad of ['5', null, undefined, Number.NaN]) {
+  for (const bad of ['abc', '', '  ', null, undefined, Number.NaN]) {
     const ctx = stubCtx({ dataMarts: { list: vi.fn(), traverseData: uniqueOf(bad) } });
     await expect(countMart(ctx, 'a', withPk)).rejects.toThrow();
     await expect(createRowCounter(ctx).count('a', withPk, null)).rejects.toThrow();

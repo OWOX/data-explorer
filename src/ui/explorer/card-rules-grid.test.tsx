@@ -118,7 +118,7 @@ test('a plain Table with a joined column shown and no rule gives its total to th
   const t = await setup({ ...plain, columns: [...plain.columns, 'products__price'] });
   t.mount();
   await waitFor(() => expect(t.spies.onCount).toHaveBeenCalled());
-  expect(t.spies.onCount).toHaveBeenCalledWith('orders', await t.total());
+  expect(t.spies.onCount).toHaveBeenCalledWith('orders', await t.total(), true);
   expect(t.spies.onFilteredTotal).not.toHaveBeenCalled();
 });
 
@@ -126,7 +126,7 @@ test('a main mart with no primary key gives its total to the card', async () => 
   const t = await setup(plain, { noKey: true });
   t.mount();
   await waitFor(() => expect(t.spies.onCount).toHaveBeenCalled());
-  expect(t.spies.onCount).toHaveBeenCalledWith('orders', await t.total());
+  expect(t.spies.onCount).toHaveBeenCalledWith('orders', await t.total(), false);
 });
 
 test('Refresh with a main filter forgets the filtered counts and does not hold the card', async () => {

@@ -104,7 +104,7 @@ test('a seeded count turns a queued path ok and its read is never sent', async (
   const byPath = new Map(ids.map((id) => [id, rulesOf(id)]));
   const { result } = renderHook(() => useFilteredCounts(modelOf(ids), byPath), { wrapper: setup(traverseData) });
   await waitFor(() => expect(result.current.filtered.get('e')?.state).toEqual({ state: 'queued' }));
-  act(() => result.current.seed(filteredKey('e', [rule(1)], null), 99));
+  act(() => result.current.seed(filteredKey('e', [rule(1)], null), 99, false));
   expect(result.current.filtered.get('e')?.state).toEqual({ state: 'ok', value: 99, unique: false });
   await waitFor(() => expect(result.current.filtered.get('d')?.state).toEqual({ state: 'ok', value: 7, unique: false }));
   await new Promise((r) => setTimeout(r, 30));
@@ -189,7 +189,7 @@ test('going back to a key whose read failed while the path wanted a cached one r
   const model = modelOf(['a']);
   const { result, rerender } = renderHook(({ byPath }) => useFilteredCounts(model, byPath), { wrapper: setup(traverseData), initialProps: { byPath: new Map([['', rulesOf('a', 1)]]) } });
   await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(1));
-  act(() => result.current.seed(filteredKey('a', [rule(2)], null), 5));
+  act(() => result.current.seed(filteredKey('a', [rule(2)], null), 5, false));
   rerender({ byPath: new Map([['', rulesOf('a', 2)]]) });
   expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 5, unique: false });
   fail = true;
@@ -212,7 +212,7 @@ test('going back to a key that was queued when the path wanted a cached one read
   const { result, rerender } = renderHook(({ byPath }) => useFilteredCounts(model, byPath), { wrapper: setup(traverseData), initialProps: { byPath: new Map([...others, ['', rulesOf('a', 1)] as const]) } });
   await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(4));
   expect(result.current.filtered.get('')?.state).toEqual({ state: 'queued' });
-  act(() => result.current.seed(filteredKey('a', [rule(2)], null), 5));
+  act(() => result.current.seed(filteredKey('a', [rule(2)], null), 5, false));
   rerender({ byPath: new Map([...others, ['', rulesOf('a', 2)] as const]) });
   rerender({ byPath: new Map([...others, ['', rulesOf('a', 1)] as const]) });
   await act(async () => { releases.forEach((r) => r()); });
@@ -242,8 +242,8 @@ test('a seeded total for a mart with a key is shown as unique records, with no r
   const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 7 }]));
   const model = modelOf(['a']);
   const { result, rerender } = renderHook(({ byPath }) => useFilteredCounts(model, byPath), { wrapper: setupKeyed(traverseData), initialProps: { byPath: new Map([['', rulesOf('a')]]) } });
-  await waitFor(() => expect(result.current.filtered.get('')?.state?.state).toBe('ok')); // the schema is loaded now
-  act(() => result.current.seed(filteredKey('a', [rule(2)], null), 5));
+  await waitFor(() => expect(result.current.filtered.get('')?.state?.state).toBe('ok'));
+  act(() => result.current.seed(filteredKey('a', [rule(2)], null), 5, true));
   rerender({ byPath: new Map([['', rulesOf('a', 2)]]) });
   expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 5, unique: true });
   expect(traverseData).toHaveBeenCalledTimes(1);

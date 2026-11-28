@@ -1,5 +1,6 @@
 import type { Schema } from '../model/types';
 import type { Ctx, TraverseFilter, TraverseOptions } from '../sdk/types';
+import { toNumber } from '../model/number';
 import { uniqueKey } from '../model/unique-count';
 import { hasPrimaryKey } from '../records/relationships';
 import { readRows } from './rows';
@@ -38,8 +39,9 @@ export async function countRows(ctx: Ctx, martId: string, schema: Schema, filter
 async function countUnique(ctx: Ctx, martId: string, filter?: TraverseFilter[]): Promise<number> {
   const options: TraverseOptions = { uniqueCount: [''], ...(filter ? { filter } : {}) };
   const rows = await readRows(ctx, martId, options);
-  const value = rows[0]?.[uniqueKey('')];
-  if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('The unique count did not arrive');
+  // A reader may hand a number back as a string (Athena does), so it is read as a number, not required to be one.
+  const value = toNumber(rows[0]?.[uniqueKey('')]);
+  if (value === null) throw new Error('The unique count did not arrive');
   return value;
 }
 
